@@ -38,7 +38,7 @@ async function checkConnections() {
         await prisma.$queryRaw`SELECT 1`;
         console.log('✅ Connected\n');
     } catch (err) {
-        console.log(`❌ Failed: ${err.message || 'Unknown error'}\n`);
+        console.log(`❌ Failed: ${err.message || 'Unknown DB error'}\n`);
     }
 
     // 3. Redis
@@ -50,7 +50,7 @@ async function checkConnections() {
             console.log('✅ Connected\n');
             await redis.quit();
         } catch (err) {
-            console.log(`❌ Failed: ${err.message || 'Unknown error'}\n`);
+            console.log(`❌ Failed: ${err.message || 'Unknown Redis error'}\n`);
         }
     }
 
@@ -73,7 +73,7 @@ async function checkConnections() {
             await r2.send(command);
             console.log('✅ Connected & Bucket Accessible\n');
         } catch (err) {
-            console.log(`❌ Failed: ${err.message || 'Unknown error'}\n`);
+            console.log(`❌ Failed: ${err.message || 'Unknown R2 error'}\n`);
         }
     }
 
@@ -92,7 +92,7 @@ async function checkConnections() {
             }
             console.log('✅ Initialized\n');
         } catch (err) {
-            console.log(`❌ Failed: ${err.message || 'Unknown error'}\n`);
+            console.log(`❌ Failed: ${err.message || 'Unknown Firebase error'}\n`);
         }
     }
 
@@ -104,10 +104,25 @@ async function checkConnections() {
                 key_id: process.env.RAZORPAY_KEY_ID,
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
+
+            // Try an API call. Razorpay errors are often in the form { error: { description: ... } }
             await rzp.plans.all({ count: 1 });
             console.log('✅ Keys Verified\n');
         } catch (err) {
-            console.log(`❌ Failed: ${err.message || 'Unknown error'}\n`);
+            // Detailed Razorpay error handling
+            let errorMsg = 'Unknown Razorpay error';
+
+            if (err.error && err.error.description) {
+                errorMsg = err.error.description;
+            } else if (err.description) {
+                errorMsg = err.description;
+            } else if (err.message) {
+                errorMsg = err.message;
+            } else {
+                errorMsg = JSON.stringify(err);
+            }
+
+            console.log(`❌ Failed: ${errorMsg}\n`);
         }
     }
 
