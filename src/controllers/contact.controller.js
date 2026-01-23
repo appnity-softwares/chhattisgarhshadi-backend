@@ -1,10 +1,10 @@
 import * as contactService from '../services/contact.service.js';
-import { catchAsync } from '../utils/catchAsync.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 /**
  * Handle contact form submission
  */
-export const submitContactForm = catchAsync(async (req, res) => {
+export const submitContactForm = asyncHandler(async (req, res) => {
     const { name, email, phone, subject, message } = req.body;
 
     // Basic validation
@@ -33,7 +33,7 @@ export const submitContactForm = catchAsync(async (req, res) => {
 /**
  * Handle getting all contact messages (Admin)
  */
-export const getContactMessages = catchAsync(async (req, res) => {
+export const getContactMessages = asyncHandler(async (req, res) => {
     const { page, limit, status } = req.query;
 
     const result = await contactService.getAllContactMessages({
@@ -52,7 +52,7 @@ export const getContactMessages = catchAsync(async (req, res) => {
 /**
  * Handle updating message status (Admin)
  */
-export const updateStatus = catchAsync(async (req, res) => {
+export const updateStatus = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
@@ -75,7 +75,7 @@ export const updateStatus = catchAsync(async (req, res) => {
 /**
  * Handle getting single message (Admin)
  */
-export const getSingleMessage = catchAsync(async (req, res) => {
+export const getSingleMessage = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const message = await contactService.getMessageById(id);
 
@@ -95,7 +95,7 @@ export const getSingleMessage = catchAsync(async (req, res) => {
 /**
  * Handle deleting message (Admin)
  */
-export const deleteContactMessage = catchAsync(async (req, res) => {
+export const deleteContactMessage = asyncHandler(async (req, res) => {
     const { id } = req.params;
     await contactService.deleteMessage(id);
 

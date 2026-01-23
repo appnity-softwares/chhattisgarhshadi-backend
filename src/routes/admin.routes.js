@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer'; // ADDED
 import { adminController } from '../controllers/admin.controller.js';
+import { runDiagnostics } from '../controllers/diagnostics.controller.js'; // ADDED
 import { adminBulkController } from '../controllers/admin.bulk.controller.js'; // ADDED
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -86,6 +87,7 @@ router.get(
 // --- Dashboard & System ---
 router.get('/stats', adminController.getDashboardStats);
 router.post('/cleanup/tokens', adminController.cleanupExpiredTokens);
+router.get('/diagnostics', runDiagnostics); // ADDED: New Diagnostics route
 
 // --- Report Management ---
 router.get(

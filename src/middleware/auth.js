@@ -200,3 +200,24 @@ export const requireAdmin = async (req, res, next) => {
     return next(new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error checking admin status'));
   }
 };
+/**
+ * Authorize users with specific roles
+ * @param {...string} roles - Allowed roles
+ */
+export const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Authentication required'));
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new ApiError(
+          HTTP_STATUS.FORBIDDEN,
+          `User role ${req.user.role} is not authorized to access this route`
+        )
+      );
+    }
+    next();
+  };
+};
