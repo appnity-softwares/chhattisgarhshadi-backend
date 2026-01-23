@@ -17,6 +17,7 @@ datasource db {
 
 enum AuthProvider {
   PHONE
+  GOOGLE
 }
 
 enum UserRole {
