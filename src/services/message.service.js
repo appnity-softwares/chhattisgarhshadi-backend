@@ -10,7 +10,7 @@ import { blockService } from './block.service.js';
 import { notificationService } from './notification.service.js';
 
 // Define a reusable Prisma select for public-facing user data
-// This prevents leaking sensitive fields like email, phone, googleId, etc.
+// This prevents leaking sensitive fields like email, phone, etc.
 const userPublicSelect = {
   id: true,
   profilePicture: true,

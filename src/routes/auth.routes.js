@@ -3,7 +3,6 @@ import authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
-  googleMobileAuthSchema,
   refreshTokenSchema,
   logoutSchema,
   verifyFirebasePhoneSchema,
@@ -14,17 +13,6 @@ const router = Router();
 
 // Rate limiter removed for authentication routes
 
-
-router.post(
-  '/google',
-  validate(googleMobileAuthSchema),
-  authController.googleMobileAuth
-);
-
-router.get(
-  '/google/callback',
-  authController.googleCallback
-);
 
 router.post(
   '/refresh',

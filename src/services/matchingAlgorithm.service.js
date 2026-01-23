@@ -8,11 +8,11 @@ import { getCompatibility } from './astrology.service.js';
 
 // Scoring weights (must sum to 100)
 const WEIGHTS = {
-    PREFERENCES: 30,      // Reduced from 35
-    LOCATION: 20,         // Increased for Native Village
-    LIFESTYLE: 10,        // Reduced
-    RELIGION_CASTE: 25,   // Increased for Category/Community
-    ASTROLOGY: 15,        // Guna matching
+    PREFERENCES: 25,      // Reduced
+    LOCATION: 25,         // Increased for Native Village
+    LIFESTYLE: 10,        // Same
+    RELIGION_CASTE: 30,   // Increased for Chhattisgarhi Priority & Same Caste
+    ASTROLOGY: 10,        // Reduced
 };
 
 /**
@@ -29,14 +29,14 @@ export const calculateMatchScore = async (userId, targetUserId) => {
                 where: { userId },
                 include: {
                     partnerPreference: true,
-                    user: { select: { id: true } },
+                    user: { select: { id: true, preferredLanguage: true } },
                 },
             }),
             prisma.profile.findUnique({
                 where: { userId: targetUserId },
                 include: {
                     partnerPreference: true,
-                    user: { select: { id: true } },
+                    user: { select: { id: true, preferredLanguage: true } },
                 },
             }),
         ]);
@@ -180,6 +180,16 @@ const calculatePreferenceScore = (preferences, targetProfile) => {
         factors++;
     }
 
+    // Chhattisgarhi Priority (NEW)
+    if (preferences.mustSpeakChhattisgarhi === true) {
+        if (targetProfile.speaksChhattisgarhi) {
+            score += 100;
+        } else {
+            score -= 50; // Penalty if mandatory and not speaking
+        }
+        factors++;
+    }
+
     return factors > 0 ? Math.round(score / factors) : 50;
 };
 
@@ -296,45 +306,59 @@ const calculateReligionScore = (preferences, targetProfile, userProfile) => {
         const targetCaste = targetProfile.caste;
         const prefCastes = preferences.caste || [];
 
-        if (isCasteMandatory) {
-            if (userCaste && userCaste === targetCaste) {
-                score += 100;
-            } else if (prefCastes.length > 0 && prefCastes.includes(targetCaste)) {
-                score += 100;
-            } else {
-                score += 0;
-            }
+        if (userCaste && userCaste === targetCaste) {
+            score += 150; // Extra heavy weight for same caste
+        } else if (prefCastes.length > 0 && prefCastes.includes(targetCaste)) {
+            score += 100;
+        } else if (isCasteMandatory) {
+            score -= 100; // Strong penalty if mandatory and not matching
         } else {
-            if (userCaste && userCaste === targetCaste) {
-                score += 100;
-            } else if (prefCastes.length > 0 && prefCastes.includes(targetCaste)) {
-                score += 90;
-            } else {
-                score += 60;
-            }
+            score += 40; // Low score if not same caste and not preferred
         }
         factors++;
     }
 
-    // Sub-caste bonus
+    // Sub-caste / Community bonus
     if (userProfile?.subCaste && targetProfile.subCaste &&
-        userProfile.subCaste === targetProfile.subCaste) {
-        score += 20;
+        userProfile.subCaste.trim().toLowerCase() === targetProfile.subCaste.trim().toLowerCase()) {
+        score += 30;
     }
 
-    // Gothram Check (NEW)
-    if (userProfile?.gothram && targetProfile.gothram) {
-        if (userProfile.gothram.toLowerCase() !== targetProfile.gothram.toLowerCase()) {
-            score += 10; // Compatible if different
+    // Gothram Check (Crucial for some communities to avoid same Gothram)
+    if (userProfile?.gothram && targetProfile.gothram &&
+        userProfile.gothram.trim().length > 0) {
+        if (userProfile.gothram.trim().toLowerCase() === targetProfile.gothram.trim().toLowerCase()) {
+            score -= 50; // Penalty for same Gothram
+        } else {
+            score += 20; // Bonus for different Gothram
         }
     }
 
-    // Speaks Chhattisgarhi Bonus (Culture)
-    if (userProfile.speaksChhattisgarhi && targetProfile.speaksChhattisgarhi) {
-        score += 20;
+    // Cultural Matching (Priority Chhattisgarhi)
+    const isUserCG = userProfile.state?.toLowerCase().includes('chhattisgarh');
+    const isTargetCG = targetProfile.state?.toLowerCase().includes('chhattisgarh');
+
+    if (isUserCG && isTargetCG) {
+        score += 50; // Huge bonus if both from Chhattisgarh
     }
 
-    return factors > 0 ? Math.min(100, Math.round(score / factors)) : 50;
+    // Speaks Chhattisgarhi Bonus (Linguistic Match)
+    if (userProfile.speaksChhattisgarhi && targetProfile.speaksChhattisgarhi) {
+        score += 50;
+    }
+
+    // App Language Preference Match (NEW)
+    const userPrefLang = userProfile.user?.preferredLanguage;
+    const targetPrefLang = targetProfile.user?.preferredLanguage;
+    if (userPrefLang && userPrefLang === targetPrefLang) {
+        if (userPrefLang === 'CG') {
+            score += 40; // High priority for Chhattisgarhi users
+        } else {
+            score += 20;
+        }
+    }
+
+    return factors > 0 ? Math.min(100, Math.max(0, Math.round(score / factors))) : 50;
 };
 
 /**

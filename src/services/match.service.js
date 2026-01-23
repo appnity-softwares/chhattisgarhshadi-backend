@@ -11,7 +11,7 @@ import { notificationService } from './notification.service.js';
 import { getSocketIoInstance } from '../socket/index.js';
 
 // Reusable Prisma select for public-facing user data
-// Prevents leaking sensitive fields like email, phone, googleId, etc.
+// Prevents leaking sensitive fields like email, phone, etc.
 // IMPORTANT: Includes profile with media for images
 const userPublicSelect = {
   id: true,

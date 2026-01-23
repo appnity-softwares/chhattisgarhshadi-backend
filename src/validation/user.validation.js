@@ -10,7 +10,7 @@ export const objectIdSchema = z.object({
 export const updateMeSchema = z.object({
   body: z.object({
     // Only allow specific, safe fields to be updated.
-    // Do NOT allow 'role', 'email', 'googleId', etc.
+    email: z.string().email('Invalid email format').optional(),
     profilePicture: z.string().url('Invalid URL format').optional(),
     preferredLanguage: z.nativeEnum(LANGUAGE).optional(),
     // Add any other SAFE fields from the User model here

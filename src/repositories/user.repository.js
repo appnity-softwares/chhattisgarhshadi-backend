@@ -9,8 +9,8 @@ import { logger } from '../config/logger.js';
 
 /**
  * @typedef {Object} UserCreateData
- * @property {string} email - User email
- * @property {string} googleId - Google OAuth ID
+ * @property {string} [email] - User email
+ * @property {string} phone - User phone number
  */
 
 /**
@@ -55,25 +55,14 @@ export const findByEmail = async (email) => {
 };
 
 /**
- * Find user by Google ID
- * @param {string} googleId - Google OAuth ID
- * @returns {Promise<Object|null>} User object or null
- */
-export const findByGoogleId = async (googleId) => {
-    return prisma.user.findUnique({
-        where: { googleId },
-        include: { profile: true },
-    });
-};
-
-/**
  * Find user by phone number
  * @param {string} phone - Phone number
+ * @param {string} [countryCode] - Optional country code
  * @returns {Promise<Object|null>} User object or null
  */
-export const findByPhone = async (phone) => {
+export const findByPhone = async (phone, countryCode = '+91') => {
     return prisma.user.findFirst({
-        where: { phone },
+        where: { phone, countryCode },
         include: { profile: true },
     });
 };
@@ -86,10 +75,9 @@ export const findByPhone = async (phone) => {
 export const create = async (data) => {
     const user = await prisma.user.create({
         data: {
-            email: data.email.toLowerCase(),
-            googleId: data.googleId,
-            authProvider: 'GOOGLE',
             ...data,
+            email: data.email ? data.email.toLowerCase() : null,
+            authProvider: 'PHONE',
         },
     });
 
@@ -106,7 +94,10 @@ export const create = async (data) => {
 export const update = async (id, data) => {
     return prisma.user.update({
         where: { id },
-        data,
+        data: {
+            ...data,
+            email: data.email ? data.email.toLowerCase() : data.email
+        },
         include: { profile: true },
     });
 };
@@ -180,6 +171,7 @@ export const findMany = async (options = {}) => {
  * @returns {Promise<boolean>} True if exists
  */
 export const emailExists = async (email) => {
+    if (!email) return false;
     const count = await prisma.user.count({
         where: { email: email.toLowerCase() },
     });
@@ -199,7 +191,6 @@ export const countActive = async () => {
 export const userRepository = {
     findById,
     findByEmail,
-    findByGoogleId,
     findByPhone,
     create,
     update,

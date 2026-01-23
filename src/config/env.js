@@ -15,10 +15,7 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('7d'),
 
-  // Google OAuth
-  GOOGLE_CLIENT_ID: z.string(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(), // Optional for mobile-only apps
-  GOOGLE_CALLBACK_URL: z.string().optional(), // Optional for mobile-only apps
+
 
   // Cloudflare R2 Storage
   R2_ACCESS_KEY_ID: z.string().optional(),

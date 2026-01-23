@@ -28,6 +28,8 @@ import auditLogRoutes from './auditLog.routes.js';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // ADDED: Memory storage for Excel
 
+// --- Admin Auth ---
+router.post('/login', adminController.adminLogin);
 
 // All routes require authentication and admin role
 router.use(authenticate, requireAdmin);

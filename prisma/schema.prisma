@@ -16,7 +16,7 @@ datasource db {
 // ============================================
 
 enum AuthProvider {
-  GOOGLE // Only Google OAuth (primary authentication)
+  PHONE
 }
 
 enum UserRole {
@@ -231,20 +231,18 @@ enum Language {
 model User {
   id Int @id @default(autoincrement())
 
-  // Authentication - GOOGLE OAUTH ONLY
-  email        String       @unique @db.VarChar(255)
-  googleId     String       @unique @db.VarChar(255)
-  authProvider AuthProvider @default(GOOGLE)
-
-  // Phone Verification (ONE-TIME, NOT FOR LOGIN)
-  phone           String?   @unique @db.VarChar(20)
-  countryCode     String    @default("+91") @db.VarChar(5)
-  isPhoneVerified Boolean   @default(false)
+  // Authentication - PHONE OTP
+  phone           String       @unique @db.VarChar(20)
+  countryCode     String       @default("+91") @db.VarChar(5)
+  isPhoneVerified Boolean      @default(false)
   phoneVerifiedAt DateTime?
+  
+  authProvider    AuthProvider @default(PHONE)
+  email           String?      @unique @db.VarChar(255)
 
-  // Email already verified via Google
-  isEmailVerified Boolean  @default(true)
-  emailVerifiedAt DateTime @default(now())
+  // Account Verification
+  isEmailVerified Boolean  @default(false)
+  emailVerifiedAt DateTime?
 
   // Profile & Settings
   profilePicture String?  @db.Text // Local path: /uploads/profiles/{userId}/original/...
@@ -334,7 +332,6 @@ model User {
   fcmTokens FcmToken[]
 
   @@index([email])
-  @@index([googleId])
   @@index([phone])
   @@index([agentId])
   @@index([agentCodeUsed])
@@ -1772,3 +1769,22 @@ model Pincode {
   @@index([pincode])
   @@map("pincodes")
 }
+
+// ============================================
+// CONTACT MESSAGES
+// ============================================
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  email     String   @db.VarChar(255)
+  phone     String?  @db.VarChar(20)
+  subject   String?  @db.VarChar(200)
+  message   String   @db.Text
+  status    String   @default("PENDING") @db.VarChar(20) // PENDING, READ, REPLIED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contact_messages")
+}
+

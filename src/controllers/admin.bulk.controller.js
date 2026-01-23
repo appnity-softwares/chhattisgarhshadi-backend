@@ -46,38 +46,40 @@ class AdminBulkController {
 
             try {
                 // Validation - Basic Required Fields
-                if (!row.email || !row.firstName || !row.lastName || !row.gender || !row.dateOfBirth) {
-                    throw new Error("Missing required fields (email, firstName, lastName, gender, dateOfBirth)");
+                // Since we are moving to Phone-based Auth, phone is mandatory
+                if (!row.phone || !row.firstName || !row.lastName || !row.gender || !row.dateOfBirth) {
+                    throw new Error("Missing required fields (phone, firstName, lastName, gender, dateOfBirth)");
                 }
 
-                const email = row.email.trim().toLowerCase();
+                const phone = String(row.phone).trim();
+                const email = row.email ? row.email.trim().toLowerCase() : null;
 
-                // Check for existing user
+                // Check for existing user by phone
                 const existingUser = await prisma.user.findFirst({
                     where: {
                         OR: [
-                            { email: email },
-                            { googleId: `admin_import_${email}` } // Check our generated ID too
-                        ]
+                            { phone: phone },
+                            email ? { email: email } : {}
+                        ].filter(cond => Object.keys(cond).length > 0)
                     }
                 });
 
                 if (existingUser) {
-                    throw new Error(`User with email ${email} already exists`);
+                    throw new Error(`User with phone ${phone} or email ${email} already exists`);
                 }
 
                 // Create User and Profile in Transaction
                 await prisma.$transaction(async (tx) => {
                     // 1. Create User
-                    const newUser = await tx.user.create({
+                    await tx.user.create({
                         data: {
+                            phone: phone,
+                            countryCode: row.countryCode || '+91',
                             email: email,
-                            googleId: `admin_import_${email}`, // Generated Placeholder ID
-                            authProvider: 'GOOGLE', // Constraint
+                            authProvider: 'PHONE',
                             role: 'USER',
-                            isEmailVerified: true, // Trusted admin source
+                            isPhoneVerified: true, // Trusted admin source
                             isActive: true,
-                            phone: row.phone ? String(row.phone) : undefined,
 
                             // Create Profile
                             profile: {
@@ -114,13 +116,12 @@ class AdminBulkController {
                                     numberOfSisters: row.numberOfSisters ? parseInt(row.numberOfSisters) : 0,
 
                                     // Local Specifics
-                                    category: row.category ? row.category.toUpperCase() : undefined, // NEW: Added Category
+                                    category: row.category ? row.category.toUpperCase() : undefined,
                                     nativeVillage: row.nativeVillage,
                                     speaksChhattisgarhi: row.speaksChhattisgarhi === 'YES' || row.speaksChhattisgarhi === true,
 
                                     // Astro
                                     manglik: row.manglik === 'YES' || row.manglik === true,
-
 
                                     // Defaults
                                     profilePrivacySettings: { create: {} },
@@ -137,7 +138,7 @@ class AdminBulkController {
                 results.failed++;
                 results.errors.push({
                     row: rowNumber,
-                    email: row.email || 'N/A',
+                    identifier: row.phone || row.email || 'N/A',
                     error: error.message
                 });
             }

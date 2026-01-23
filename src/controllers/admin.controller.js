@@ -5,6 +5,37 @@ import { profileService } from '../services/profile.service.js';
 import { adminService } from '../services/admin.service.js';
 import { logAdminAction } from '../services/activityLog.service.js';
 import { HTTP_STATUS } from '../utils/constants.js';
+import { ApiError } from '../utils/ApiError.js';
+import jwtUtils from '../utils/jwt.js';
+
+/**
+ * [NEW] Admin Login
+ */
+export const adminLogin = asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
+
+  const ADMIN_USER = process.env.ADMIN_USERNAME || 'admin@chshadi.com';
+  const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'Admin@123';
+
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    // Generate a special admin token
+    // We use a specific ID range or special identifier for hardcoded admin
+    const token = jwtUtils.generateAccessToken({
+      id: 0, // 0 for super admin
+      role: 'ADMIN',
+      email: ADMIN_USER
+    });
+
+    return res.status(HTTP_STATUS.OK).json(
+      new ApiResponse(HTTP_STATUS.OK, {
+        token,
+        user: { email: ADMIN_USER, role: 'ADMIN' }
+      }, 'Admin login successful')
+    );
+  }
+
+  throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid admin credentials');
+});
 
 /**
  * Get all users (Admin)
@@ -200,6 +231,7 @@ export const updatePlan = asyncHandler(async (req, res) => {
 
 
 export const adminController = {
+  adminLogin,
   getAllUsers,
   getUserById,
   updateUserRole,
