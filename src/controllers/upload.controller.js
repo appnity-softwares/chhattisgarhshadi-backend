@@ -13,7 +13,7 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No file uploaded');
   }
 
-  // 1. Process and upload image to S3 (public)
+  // 1. Process and upload image to R2 (public)
   const result = await uploadService.processAndUploadImage(
     req.file,
     `users/${req.user.id}/photos`
@@ -29,7 +29,7 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
     fileSize: result.original.size,
     mimeType: result.original.mimetype,
   };
-  
+
   const media = await profileService.addPhoto(
     req.user.id,
     mediaData,
@@ -62,7 +62,7 @@ export const uploadProfilePhotos = asyncHandler(async (req, res) => {
 
   // Create Media records in database
   const addMediaPromises = results.map((result) => {
-     const mediaData = {
+    const mediaData = {
       url: result.original.url,
       thumbnailUrl: result.thumbnail.url,
       key: result.original.key,
@@ -99,8 +99,8 @@ export const uploadIdProof = asyncHandler(async (req, res) => {
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No file uploaded');
   }
 
-  // 1. Upload to S3 as PRIVATE
-  const result = await uploadService.uploadToS3(
+  // 1. Upload to R2 as PRIVATE
+  const result = await uploadService.uploadToR2(
     req.file,
     `users/${req.user.id}/documents`,
     false // isPublic = false

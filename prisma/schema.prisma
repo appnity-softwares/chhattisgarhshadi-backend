@@ -766,11 +766,11 @@ model Media {
 
   type MediaType
 
-  // LOCAL FILE PATHS (Changed from S3 URLs)
-  url          String  @db.Text // /uploads/profiles/{userId}/original/photo-{timestamp}.jpg
-  thumbnailUrl String? @db.Text // /uploads/profiles/{userId}/thumbnails/photo-{timestamp}-150x150.jpg
-  mediumUrl    String? @db.Text // /uploads/profiles/{userId}/medium/photo-{timestamp}-400x400.jpg
-  largeUrl     String? @db.Text // /uploads/profiles/{userId}/large/photo-{timestamp}-800x800.jpg
+  // CLOUDFLARE R2 FILE PATHS
+  url          String  @db.Text // /users/{userId}/photos/photo-{timestamp}.jpg
+  thumbnailUrl String? @db.Text // /users/{userId}/photos/thumbnails/thumb_photo-{timestamp}.jpg
+  mediumUrl    String? @db.Text 
+  largeUrl     String? @db.Text 
 
   fileName String  @db.VarChar(255)
   fileSize Int? // in bytes

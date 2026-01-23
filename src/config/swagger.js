@@ -92,7 +92,7 @@ const options = {
                     type: 'object',
                     required: ['idToken'],
                     properties: {
-                        idToken: { type: 'string', description: 'Google OAuth ID token' },
+                        idToken: { type: 'string', description: 'Firebase Phone Auth ID token' },
                     },
                 },
                 LoginResponse: {

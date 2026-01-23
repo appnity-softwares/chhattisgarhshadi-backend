@@ -24,9 +24,7 @@ A production-ready backend API for a **React Native CLI mobile app** matrimonial
 | [📋 Setup Summary](./SETUP_SUMMARY.md) | What's done & what's pending | 5 min |
 | [🚀 Quick Reference](./QUICK_REFERENCE.md) | Quick links, examples, troubleshooting | 10 min |
 | [📖 API Documentation](./API_DOCUMENTATION.md) | Complete API reference with all endpoints | 20 min |
-| [🔐 Google Cloud Setup](./GOOGLE_CLOUD_SETUP.md) | Step-by-step Google OAuth configuration | 15 min |
 | [📱 React Native Setup](./REACT_NATIVE_SETUP.md) | Connect your mobile app | 30 min |
-| [🔑 OAuth with InAppBrowser](./GOOGLE_OAUTH_INAPPBROWSER.md) | Mobile OAuth implementation guide | 20 min |
 | [🚢 Deployment Guide](./DEPLOYMENT_GUIDE.md) | Deploy to Render.com | 15 min |
 
 ---
@@ -35,26 +33,23 @@ A production-ready backend API for a **React Native CLI mobile app** matrimonial
 
 ## 🚀 Features
 
-- **Authentication**: Google OAuth 2.0 with JWT tokens
+- **Authentication**: Phone OTP Authentication (Firebase) with JWT tokens
 - **Real-time**: Socket.io for messaging and notifications
-- **File Storage**: AWS S3 for photo and document uploads
+- **File Storage**: Cloudflare R2 for photo and document uploads
 - **Payments**: Razorpay integration for premium subscriptions
-- **SMS/OTP**: MSG91 API integration
 - **Push Notifications**: Firebase Cloud Messaging (FCM)
 - **Security**: Helmet, CORS, rate limiting, input validation
 - **Logging**: Winston for structured logging
-- **Database**: PostgreSQL with Prisma ORM
+- **Database**: PostgreSQL (Neon) with Prisma ORM
 
 ## 📋 Prerequisites
 
-- Node.js (v18 or higher)
+- Node.js (v20 or higher)
 - PostgreSQL (v14 or higher)
 - npm (v9 or higher)
-- AWS S3 account
-- Google OAuth credentials
+- Cloudflare R2 account (S3-compatible)
 - Razorpay account
-- MSG91 account
-- Firebase project (optional, for push notifications)
+- Firebase project (for Phone Auth and Push Notifications)
 
 ## 🛠️ Installation
 
@@ -105,11 +100,10 @@ chhattisgarh-shadi-backend/
 │   └── schema.prisma           # Database schema
 ├── src/
 │   ├── config/                 # Configuration files
-│   │   ├── aws.js             # AWS S3 setup
+│   │   ├── r2.js              # Cloudflare R2 setup
 │   │   ├── database.js        # Prisma client
 │   │   ├── firebase.js        # Firebase Admin SDK
-│   │   ├── logger.js          # Winston logger
-│   │   ├── msg91.js           # MSG91 API
+│   │   ├── logger.js          # Winston logger 
 │   │   └── razorpay.js        # Razorpay client
 │   ├── controllers/           # Request handlers
 │   ├── middleware/            # Express middleware
@@ -130,40 +124,38 @@ See `.env.example` for all required environment variables.
 ## 📡 API Endpoints
 
 ### Authentication
-- `GET /api/auth/google` - Initiate Google OAuth
-- `GET /api/auth/google/callback` - Google OAuth callback
-- `POST /api/auth/refresh` - Refresh access token
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/me` - Get current user
+- `POST /api/v1/auth/phone/login` - Login with Firebase Phone Auth Token
+- `POST /api/v1/auth/phone/verify-firebase` - Verify phone with Firebase Token
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/logout` - Logout
 
 ### Users
-- `GET /api/users/me` - Get current user profile
-- `PUT /api/users/me` - Update current user
-- `DELETE /api/users/me` - Delete account
+- `GET /api/v1/users/me` - Get current user profile
+- `DELETE /api/v1/users/me` - Delete account
 
 ### Profiles
-- `POST /api/profiles` - Create profile
-- `GET /api/profiles/me` - Get my profile
-- `PUT /api/profiles/me` - Update my profile
-- `GET /api/profiles/search` - Search profiles
+- `POST /api/v1/profiles` - Create profile
+- `GET /api/v1/profiles/me` - Get my profile
+- `PUT /api/v1/profiles/me` - Update my profile
+- `GET /api/v1/profiles/search` - Search profiles
 
 ### Matches
-- `POST /api/matches` - Send match request
-- `GET /api/matches/sent` - Get sent requests
-- `GET /api/matches/received` - Get received requests
-- `PUT /api/matches/:matchId/accept` - Accept request
+- `POST /api/v1/matches` - Send match request
+- `GET /api/v1/matches/sent` - Get sent requests
+- `GET /api/v1/matches/received` - Get received requests
+- `PUT /api/v1/matches/:matchId/accept` - Accept request
 
 ### Messages
-- `POST /api/messages` - Send message
-- `GET /api/messages/conversations` - Get all conversations
-- `GET /api/messages/:userId` - Get conversation
+- `POST /api/v1/messages` - Send message
+- `GET /api/v1/messages/conversations` - Get all conversations
+- `GET /api/v1/messages/:userId` - Get conversation
 
-### And more... See code for complete API documentation.
+### And more... See Swagger docs at `/api-docs`
 
 ## 🔐 Security Features
 
 - JWT Authentication with refresh tokens
-- Google OAuth 2.0
+- Firebase Phone Authentication
 - Rate limiting
 - Helmet security headers
 - CORS configuration

@@ -60,15 +60,18 @@ Authorization: Bearer {{accessToken}}
 
 ### Phase 1: Authentication
 
-> **⚠️ Important**: Google OAuth login requires the mobile app. For API testing, request test tokens from the developer.
-
-#### 1.1 Google OAuth Login (Mobile App Only)
+#### 1.1 Phone Login (Firebase Auth)
 ```
-POST {{baseUrl}}/auth/google
+POST {{baseUrl}}/auth/phone/login
 Content-Type: application/json
 
 {
-  "idToken": "<Google ID Token from mobile app>",
+  "firebaseIdToken": "<Firebase ID Token from mobile app>",
+  "deviceInfo": {
+    "deviceId": "ABC-123",
+    "deviceName": "Tester Phone",
+    "deviceType": "ANDROID"
+  },
   "agentCode": "AGT001"  // Optional - for agent referral
 }
 ```
@@ -82,10 +85,10 @@ Content-Type: application/json
     "refreshToken": "eyJhbG...",
     "user": {
       "id": 1,
-      "email": "user@gmail.com",
-      "role": "USER",
-      "hasProfile": false
-    }
+      "phone": "9876543210",
+      "role": "USER"
+    },
+    "isNewUser": true
   }
 }
 ```
@@ -101,30 +104,18 @@ Content-Type: application/json
 }
 ```
 
-#### 1.3 Phone OTP - Send
+#### 1.3 Firebase Phone Verification (Update/Verify)
 ```
-POST {{baseUrl}}/auth/phone/send-otp
+POST {{baseUrl}}/auth/phone/verify-firebase
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "phone": "9876543210"
+  "firebaseIdToken": "<Firebase ID Token>"
 }
 ```
 
-#### 1.4 Phone OTP - Verify
-```
-POST {{baseUrl}}/auth/phone/verify-otp
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "phone": "9876543210",
-  "otp": "123456"
-}
-```
-
-#### 1.5 Logout
+#### 1.4 Logout
 ```
 POST {{baseUrl}}/auth/logout
 Authorization: Bearer {{accessToken}}
@@ -797,8 +788,7 @@ Content-Type: application/json
 | Feature | Jeevansathi | Chhattisgarhshadi | Status |
 |---------|-------------|-------------------|--------|
 | **Authentication** ||||
-| Email/Password Login | ✅ | ❌ | Not needed (Google OAuth) |
-| Google OAuth | ✅ | ✅ | **COMPLETE** |
+| Email/Password Login | ✅ | ❌ | Not needed (Firebase Phone Auth) |
 | Phone OTP Verification | ✅ | ✅ | **COMPLETE** |
 | **Profile** ||||
 | Basic Profile | ✅ | ✅ | **COMPLETE** |

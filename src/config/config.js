@@ -29,11 +29,6 @@ const envSchema = z.object({
   REFRESH_TOKEN_SECRET: z.string().optional(), // Backward compatibility
   REFRESH_TOKEN_EXPIRY: z.string().optional(), // Backward compatibility
 
-  // Google OAuth (Mobile - only CLIENT_ID needed)
-  GOOGLE_CLIENT_ID: z.string(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(), // ✅ Optional (not needed for mobile)
-  GOOGLE_CALLBACK_URL: z.string().optional(),  // ✅ Optional (not needed for mobile)
-
   // Cloudflare R2 Storage
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),

@@ -47,12 +47,5 @@ export const getBucketName = () => process.env.R2_BUCKET_NAME;
  */
 export const getRegion = () => process.env.R2_REGION || 'auto';
 
-/**
- * Get Public URL base
- * @returns {string|null}
- */
+// Public URL base
 export const getPublicUrl = () => process.env.R2_PUBLIC_URL || null;
-
-// Backward compatibility exports (deprecated, use r2-prefixed versions)
-export const s3Client = r2Client;
-export const isS3Configured = isR2Configured;

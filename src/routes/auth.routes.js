@@ -34,7 +34,7 @@ router.post(
   authController.phoneLogin
 );
 
-// Firebase Phone Verification (replaces MSG91 OTP)
+// Firebase Phone Verification
 router.post(
   '/phone/verify-firebase',
   authenticate,

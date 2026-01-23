@@ -131,9 +131,9 @@ export const cleanObject = (obj) => {
 };
 
 /**
- * Generate S3 object key
+ * Generate cloud storage object key
  */
-export const generateS3Key = (folder, filename) => {
+export const generateStorageKey = (folder, filename) => {
   return `${folder}/${filename}`;
 };
 

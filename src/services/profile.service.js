@@ -8,7 +8,7 @@ import {
 } from '../utils/helpers.js';
 import { updateProfileCompleteness } from '../utils/profile.helpers.js';
 import { logger } from '../config/logger.js';
-// Import uploadService to delete S3 objects
+// Import uploadService to delete R2 objects
 import { uploadService } from './upload.service.js';
 // ADDED: Import blockService to filter searches
 import { blockService } from './block.service.js';
@@ -495,7 +495,7 @@ export const addPhoto = async (userId, mediaData, mediaType) => {
 };
 
 /**
- * Remove photo from Media table and S3
+ * Remove photo from Media table and R2
  * @param {string} userId - User ID (for verification)
  * @param {number} mediaId - The ID of the media to delete
  * @returns {Promise<void>}
@@ -514,7 +514,7 @@ export const deletePhoto = async (userId, mediaId) => {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You are not authorized to delete this photo');
     }
 
-    // 1. Delete from S3
+    // 1. Delete from R2
     const key = uploadService.extractKeyFromUrl(media.url);
     if (key) {
       await uploadService.deleteFile(key);

@@ -4,35 +4,35 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { s3Client, getBucketName, isS3Configured, getRegion } from '../config/r2.js';
+import { r2Client, getBucketName, isR2Configured, getRegion } from '../config/r2.js';
 import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../utils/constants.js';
-import { generateUniqueFilename, generateS3Key } from '../utils/helpers.js';
+import { generateUniqueFilename, generateStorageKey } from '../utils/helpers.js';
 import { logger } from '../config/logger.js';
 import sharp from 'sharp';
 
 /**
- * Upload file to S3
+ * Upload file to Cloudflare R2
  * @param {Object} file - File object from multer
- * @param {string} folder - S3 folder name
+ * @param {string} folder - R2 folder name
  * @param {boolean} isPublic - Whether the file should be publicly readable
  * @returns {Promise<Object>}
  */
-export const uploadToS3 = async (
+export const uploadToR2 = async (
   file,
   folder = 'uploads',
   isPublic = false
 ) => {
   try {
-    // Check if S3 is configured
-    if (!isS3Configured()) {
+    // Check if R2 is configured
+    if (!isR2Configured()) {
       throw new ApiError(
         HTTP_STATUS.SERVICE_UNAVAILABLE,
-        'S3 storage is not configured. Please contact administrator.'
+        'Cloudflare R2 storage is not configured. Please contact administrator.'
       );
     }
     const filename = generateUniqueFilename(file.originalname);
-    const key = generateS3Key(folder, filename);
+    const key = generateStorageKey(folder, filename);
 
     const command = new PutObjectCommand({
       Bucket: getBucketName(),
@@ -43,34 +43,34 @@ export const uploadToS3 = async (
       // Make sure bucket policy allows public read access for profile photos
     });
 
-    await s3Client.send(command);
+    await r2Client.send(command);
 
     const region = getRegion();
 
     // Construct public URL
     // Priority 1: Custom Public URL (e.g., https://media.mydomain.com) - BEST FOR PROD
     // Priority 2: R2.dev URL (e.g., https://pub-<hash>.r2.dev)
-    let s3Url;
+    let storageUrl;
     if (process.env.R2_PUBLIC_URL) {
       // Remove trailing slash if present
       const baseUrl = process.env.R2_PUBLIC_URL.replace(/\/$/, '');
-      s3Url = `${baseUrl}/${key}`;
+      storageUrl = `${baseUrl}/${key}`;
     } else {
-      // Fallback (Not recommended for R2 public access without custom domain)
-      s3Url = `https://${getBucketName()}.s3.${region}.amazonaws.com/${key}`;
+      // Fallback (Generic R2 naming)
+      storageUrl = `https://${getBucketName()}.${region}.r2.cloudflarestorage.com/${key}`;
     }
 
     logger.info(`File uploaded to R2: ${key} (public: ${isPublic})`);
 
     return {
       key, // Always return the key
-      url: isPublic ? s3Url : null, // Only return public URL if public
+      url: isPublic ? storageUrl : null, // Only return public URL if public
       filename,
       size: file.size,
       mimetype: file.mimetype,
     };
   } catch (error) {
-    logger.error('Error in uploadToS3:', error);
+    logger.error('Error in uploadToR2:', error);
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       `Failed to upload file: ${error.message}` // Expose error for debugging
@@ -106,7 +106,7 @@ export const processAndUploadImage = async (file, folder = 'photos') => {
       mimetype: 'image/jpeg',
     };
     // Profile photos are public
-    const mainImage = await uploadToS3(mainImageFile, folder, true);
+    const mainImage = await uploadToR2(mainImageFile, folder, true);
 
     // Upload thumbnail
     const thumbnailFile = {
@@ -119,7 +119,7 @@ export const processAndUploadImage = async (file, folder = 'photos') => {
       mimetype: 'image/jpeg',
     };
     // Thumbnails are also public
-    const thumbnailImage = await uploadToS3(
+    const thumbnailImage = await uploadToR2(
       thumbnailFile,
       `${folder}/thumbnails`,
       true
@@ -139,8 +139,8 @@ export const processAndUploadImage = async (file, folder = 'photos') => {
 };
 
 /**
- * Delete file from S3
- * @param {string} key - S3 object key
+ * Delete file from R2
+ * @param {string} key - R2 object key
  * @returns {Promise<void>}
  */
 export const deleteFile = async (key) => {
@@ -150,9 +150,9 @@ export const deleteFile = async (key) => {
       Key: key,
     });
 
-    await s3Client.send(command);
+    await r2Client.send(command);
 
-    logger.info(`File deleted from S3: ${key}`);
+    logger.info(`File deleted from R2: ${key}`);
   } catch (error) {
     logger.error('Error in deleteFile:', error);
     throw new ApiError(
@@ -164,7 +164,7 @@ export const deleteFile = async (key) => {
 
 /**
  * Generate presigned URL for private files
- * @param {string} key - S3 object key
+ * @param {string} key - R2 object key
  * @param {number} expiresIn - URL expiry in seconds
  * @returns {Promise<string>}
  */
@@ -177,7 +177,7 @@ export const getPresignedUrl = async (key, expiresIn = 3600) => {
       Key: key,
     });
 
-    const url = await getSignedUrl(s3Client, command, { expiresIn });
+    const url = await getSignedUrl(r2Client, command, { expiresIn });
 
     return url;
   } catch (error) {
@@ -190,9 +190,9 @@ export const getPresignedUrl = async (key, expiresIn = 3600) => {
 };
 
 /**
- * Extract S3 key from URL
- * @param {string} url - S3 URL
- * @returns {string} S3 key
+ * Extract storage key from URL
+ * @param {string} url - Storage URL
+ * @returns {string} Storage key
  */
 export const extractKeyFromUrl = (url) => {
   if (!url) return null;
@@ -211,7 +211,7 @@ export const extractKeyFromUrl = (url) => {
 };
 
 export const uploadService = {
-  uploadToS3,
+  uploadToR2,
   processAndUploadImage,
   deleteFile,
   getPresignedUrl,
