@@ -93,7 +93,6 @@ async function seed() {
                     isPhoneVerified: true,
                     phone: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
                     isEmailVerified: true,
-                    isActive: true,
                     profile: {
                         create: {
                             firstName: name.first,
@@ -158,7 +157,6 @@ async function seed() {
                     isPhoneVerified: true,
                     phone: `8${Math.floor(100000000 + Math.random() * 900000000)}`,
                     isEmailVerified: true,
-                    isActive: true,
                     profile: {
                         create: {
                             firstName: name.first,
