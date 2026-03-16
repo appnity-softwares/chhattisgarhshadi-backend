@@ -35,6 +35,7 @@ const profileBodyBase = {
   caste: z.string().min(2).optional(), // FIX: Made optional to match schema
   subCaste: z.string().optional(),
   gothram: z.string().optional(), // ADDED
+  intercasteAllowed: z.boolean().optional(), // ADDED
 
   // Chhattisgarh-Specific
   nativeVillage: z.string().optional(),
