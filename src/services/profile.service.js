@@ -394,30 +394,32 @@ export const searchProfiles = async (query, currentUserId = null) => {
       prisma.profile.count({ where }),
     ]);
 
-    // Add match status for each profile
-    const profilesWithAge = await Promise.all(profiles.map(async (profile) => {
-      let matchStatus = null;
+    // OPTIMIZED: Fetch all relevant match requests in ONE query instead of N queries
+    let matchRequests = [];
+    if (currentUserId && profiles.length > 0) {
+      const profileUserIds = profiles.map(p => p.userId);
+      matchRequests = await prisma.matchRequest.findMany({
+        where: {
+          OR: [
+            { senderId: currentUserId, receiverId: { in: profileUserIds } },
+            { senderId: { in: profileUserIds }, receiverId: currentUserId },
+          ],
+        },
+        select: { senderId: true, receiverId: true, status: true },
+      });
+    }
 
-      if (currentUserId) {
-        // Check if there's a match request between current user and this profile
-        const matchRequest = await prisma.matchRequest.findFirst({
-          where: {
-            OR: [
-              { senderId: currentUserId, receiverId: profile.userId },
-              { senderId: profile.userId, receiverId: currentUserId },
-            ],
-          },
-          select: { status: true },
-        });
+    // Map match requests for quick lookup
+    const matchMap = new Map();
+    matchRequests.forEach(mr => {
+      const otherId = mr.senderId === currentUserId ? mr.receiverId : mr.senderId;
+      matchMap.set(otherId, mr.status);
+    });
 
-        matchStatus = matchRequest?.status || null;
-      }
-
-      return {
-        ...profile,
-        age: calculateAge(profile.dateOfBirth),
-        matchStatus, // 'PENDING', 'ACCEPTED', 'REJECTED', or null
-      };
+    const profilesWithAge = profiles.map((profile) => ({
+      ...profile,
+      age: calculateAge(profile.dateOfBirth),
+      matchStatus: matchMap.get(profile.userId) || null,
     }));
 
     const pagination = getPaginationMetadata(page, limit, total);
