@@ -158,7 +158,7 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
 export const updateProfile = async (userId, data) => {
   try {
     // eslint-disable-next-line no-unused-vars
-    const validData = data;
+    const { intercasteAllowed, ...validData } = data; // Strip unsupported fields before Prisma update
 
     const updatedProfile = await prisma.profile.update({
       where: { userId },
