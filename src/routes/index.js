@@ -126,6 +126,10 @@ router.use('/recommendations', recommendationsRoutes);
 import locationRoutes from './location.routes.js';
 router.use('/location', locationRoutes);
 
+// FAQ routes (public + admin CRUD)
+import faqRoutes from './faq.routes.js';
+router.use('/faq', faqRoutes);
+
 // Web Payment routes (for browser-based checkout)
 import webRoutes from './web.routes.js';
 router.use('/web', webRoutes);
