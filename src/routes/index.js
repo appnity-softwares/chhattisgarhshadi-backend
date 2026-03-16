@@ -93,6 +93,10 @@ router.use('/horoscope', horoscopeRoutes);
 import adminRoutes from './admin.routes.js';
 router.use('/admin', adminRoutes);
 
+// Config routes
+import configRoutes from './config.routes.js';
+router.use('/config', configRoutes);
+
 // Contact routes
 import contactRoutes from './contact.routes.js';
 router.use('/contact', contactRoutes);

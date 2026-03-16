@@ -88,11 +88,11 @@ async function seed() {
 
             const user = await prisma.user.create({
                 data: {
-                    email: `${name.first.toLowerCase()}.${name.last.toLowerCase()}${i}@example.com`,
+                    email: `${name.first.toLowerCase()}.${name.last.toLowerCase()}${i}_${Date.now()}@example.com`,
                     googleId: `google_male_${Date.now()}_${i}`,
                     authProvider: 'GOOGLE',
                     isPhoneVerified: true,
-                    phone: `98765${String(i).padStart(5, '0')}`,
+                    phone: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
                     isEmailVerified: true,
                     isActive: true,
                     profile: {
@@ -154,11 +154,11 @@ async function seed() {
 
             const user = await prisma.user.create({
                 data: {
-                    email: `${name.first.toLowerCase()}.${name.last.toLowerCase()}${i}@example.com`,
+                    email: `${name.first.toLowerCase()}.${name.last.toLowerCase()}${i}_${Date.now()}@example.com`,
                     googleId: `google_female_${Date.now()}_${i}`,
                     authProvider: 'GOOGLE',
                     isPhoneVerified: true,
-                    phone: `98766${String(i).padStart(5, '0')}`,
+                    phone: `8${Math.floor(100000000 + Math.random() * 900000000)}`,
                     isEmailVerified: true,
                     isActive: true,
                     profile: {
