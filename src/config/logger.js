@@ -28,16 +28,20 @@ const transports = [
   new winston.transports.Console({
     format: config.NODE_ENV === 'production' ? logFormat : consoleFormat,
   }),
-  // Error log file
+  // Error log file - rotated
   new winston.transports.File({
     filename: 'logs/error.log',
     level: 'error',
     format: logFormat,
+    maxsize: 5242880, // 5MB
+    maxFiles: 5,
   }),
-  // Combined log file
+  // Combined log file - rotated
   new winston.transports.File({
     filename: 'logs/combined.log',
     format: logFormat,
+    maxsize: 10485760, // 10MB
+    maxFiles: 5,
   }),
 ];
 

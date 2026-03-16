@@ -63,7 +63,12 @@ export const errorHandler = (err, req, res, next) => {
   // 5. Handle other generic errors
   else {
     statusCode = err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
-    message = err.message || 'Internal Server Error';
+    // Mask internal error messages in production
+    if (config.NODE_ENV === 'production' && statusCode === HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+      message = 'An unexpected error occurred. Please try again later.';
+    } else {
+      message = err.message || 'Internal Server Error';
+    }
   }
 
   // Log the error

@@ -140,8 +140,29 @@ app.use(compression({
 // Rate limiting
 app.use(rateLimiter);
 
-// Logging
-if (process.env.NODE_ENV !== 'production') {
+// ============================================
+// RESPONSE TIME HEADER - For monitoring
+// ============================================
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const end = process.hrtime.bigint();
+    const ms = Number(end - start) / 1e6;
+    res.setHeader('X-Response-Time', `${ms.toFixed(2)}ms`);
+  });
+  next();
+});
+
+// ============================================
+// HTTP ACCESS LOGGING - All environments
+// ============================================
+if (process.env.NODE_ENV === 'production') {
+  // Structured access logs in production (combined format)
+  app.use(morgan('combined', {
+    stream: { write: (message) => logger.http(message.trim()) },
+    skip: (req) => req.url === '/health' || req.url === '/api/v1/health', // Skip health checks
+  }));
+} else {
   app.use(morgan('dev'));
 }
 
@@ -188,13 +209,15 @@ app.use('/api/v1', routes);
 // Future API version placeholder
 // app.use('/api/v2', v2Routes);
 
-// 404 Handler
+// 404 Handler — don't leak paths in production
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
-    requestedPath: req.path,
-    hint: 'All API routes are under /api/v1 prefix',
+    ...(process.env.NODE_ENV !== 'production' && {
+      requestedPath: req.path,
+      hint: 'All API routes are under /api/v1 prefix',
+    }),
   });
 });
 
