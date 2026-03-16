@@ -144,15 +144,23 @@ export const searchProfilesSchema = z.object({
     gender: z.nativeEnum(GENDER).optional(),
     minAge: z.coerce.number().int().min(18).optional(),
     maxAge: z.coerce.number().int().max(100).optional(),
-    religions: stringToArray.optional(), // e.g., ?religions=HINDU,MUSLIM
+    religions: stringToArray.optional(),
     castes: stringToArray.optional(),
     maritalStatus: z.nativeEnum(MARITAL_STATUS).optional(),
-    minHeight: z.coerce.number().int().optional(),
-    maxHeight: z.coerce.number().int().optional(),
-    maxHeight: z.coerce.number().int().optional(),
+    minHeight: z.coerce.number().optional(),
+    maxHeight: z.coerce.number().optional(),
     nativeVillage: z.string().optional(),
-    speaksChhattisgarhi: z.coerce.boolean().optional(), // For Chhattisgarh search
-    category: z.string().optional(), // ADDED
+    speaksChhattisgarhi: z.coerce.boolean().optional(),
+    category: z.string().optional(),
+    occupation: z.string().optional(),
+    education: z.string().optional(),
+    annualIncome: z.string().optional(),
+    income: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    intercasteAllowed: z.coerce.boolean().optional(),
+    isVerified: z.coerce.boolean().optional(),
+    withPhoto: z.coerce.boolean().optional(),
   }),
 });
 
