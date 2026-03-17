@@ -20,6 +20,12 @@ export const authenticate = async (req, res, next) => {
     // Verify JWT
     const decoded = jwtUtils.verifyAccessToken(token);
 
+    // Special case for hardcoded admin (id: 0)
+    if (decoded.id === 0 && decoded.role === 'ADMIN') {
+      req.user = { id: 0, role: 'ADMIN', email: decoded.email, isActive: true, isBanned: false };
+      return next();
+    }
+
     // Get user from database
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -57,15 +63,19 @@ export const optionalAuth = async (req, res, next) => {
       const token = authHeader.substring(7);
       const decoded = jwtUtils.verifyAccessToken(token);
 
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-        include: {
-          profile: true,
-        },
-      });
+      if (decoded.id === 0 && decoded.role === 'ADMIN') {
+        req.user = { id: 0, role: 'ADMIN', email: decoded.email, isActive: true, isBanned: false };
+      } else {
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.id },
+          include: {
+            profile: true,
+          },
+        });
 
-      if (user && user.isActive && !user.isBanned) {
-        req.user = user;
+        if (user && user.isActive && !user.isBanned) {
+          req.user = user;
+        }
       }
     }
 
