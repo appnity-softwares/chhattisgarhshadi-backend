@@ -68,6 +68,19 @@ if (process.env.NODE_ENV === 'production') {
 // CORS - Fixed configuration
 const allowedOrigins = env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',').map(o => o.trim()) : [];
 
+// Explicitly include common development and production origins
+if (process.env.NODE_ENV !== 'production') {
+  if (!allowedOrigins.includes('http://localhost:3000')) allowedOrigins.push('http://localhost:3000');
+  if (!allowedOrigins.includes('http://localhost:3001')) allowedOrigins.push('http://localhost:3001');
+}
+// Add production admin domain if not present
+if (!allowedOrigins.includes('https://admin.chhattisgarhshadi.com')) {
+  allowedOrigins.push('https://admin.chhattisgarhshadi.com');
+}
+if (!allowedOrigins.includes('https://chhattisgarhshadi.com')) {
+  allowedOrigins.push('https://chhattisgarhshadi.com');
+}
+
 const corsOptions = {
   origin: (origin, callback) => {
     // If CORS_ORIGIN is '*', allow all origins
@@ -148,7 +161,9 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const end = process.hrtime.bigint();
     const ms = Number(end - start) / 1e6;
-    res.setHeader('X-Response-Time', `${ms.toFixed(2)}ms`);
+    // CRITICAL: Removed res.setHeader here as it causes "Headers already sent" crash on response completion
+    // Instead, we log the response time for monitoring
+    logger.debug(`${req.method} ${req.originalUrl} - ${ms.toFixed(2)}ms`);
   });
   next();
 });

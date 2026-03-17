@@ -137,7 +137,6 @@ export const profileController = {
   updateMyProfile,
   deleteMyProfile,
   searchProfiles,
-  searchProfiles,
   deletePhoto,
   getRecommendations,
 };

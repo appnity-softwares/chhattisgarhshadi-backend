@@ -73,8 +73,8 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
     }
     // --- End Block Check ---
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId, user: { isActive: true, isBanned: false } }, // ADDED: Check user status
+    const profile = await prisma.profile.findFirst({
+      where: { userId, user: { isActive: true, isBanned: false } }, // findFirst supports relation filters
       include: {
         user: {
           select: {
