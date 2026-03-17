@@ -25,6 +25,9 @@ import analyticsRoutes from './analytics.routes.js';
 import activityLogRoutes from './activityLog.routes.js';
 // ADDED: Import audit log routes
 import auditLogRoutes from './auditLog.routes.js';
+// ADDED: Import new admin features
+import promoCodeRoutes from './promoCode.routes.js';
+import adminNotificationRoutes from './admin.notification.routes.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // ADDED: Memory storage for Excel
@@ -141,5 +144,9 @@ router.use('/activity-logs', activityLogRoutes);
 // --- ADDED: Audit Logs ---
 // All routes will be prefixed with /admin/audit-logs
 router.use('/audit-logs', auditLogRoutes);
+
+// --- ADDED: Marketing & Notifications ---
+router.use('/promo-codes', promoCodeRoutes);
+router.use('/notifications', adminNotificationRoutes);
 
 export default router;

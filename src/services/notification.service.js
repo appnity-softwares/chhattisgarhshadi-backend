@@ -670,4 +670,5 @@ export const notificationService = {
   registerDevice,
   unregisterDevice,
   cleanupStaleTokens,
+  sendPushNotification: _sendMulticastNotification, // Export this for admin bulk sends
 };
