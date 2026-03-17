@@ -29,12 +29,17 @@ export const createAgent = async (data, adminId) => {
       throw new ApiError(HTTP_STATUS.CONFLICT, 'An agent with this code already exists');
     }
 
+    const agentData = {
+      ...data,
+      agentCode, // Use the generated or provided code
+    };
+
+    if (adminId && adminId !== 0) {
+      agentData.createdBy = adminId;
+    }
+
     const agent = await prisma.agent.create({
-      data: {
-        ...data,
-        agentCode, // Use the generated or provided code
-        createdBy: adminId,
-      },
+      data: agentData,
     });
     logger.info(`Admin ${adminId} created new agent ${agent.id}`);
     return agent;
