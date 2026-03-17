@@ -226,6 +226,14 @@ export const searchProfiles = async (query, currentUserId = null) => {
       annualIncome,
       withPhoto,
       isVerified,
+      city,
+      state,
+      motherTongue,
+      occupation,
+      manglik,
+      diet,
+      smokingHabit,
+      drinkingHabit,
       // SECTION TYPE - featured, new, recommended
       type,
     } = query;
@@ -311,10 +319,18 @@ export const searchProfiles = async (query, currentUserId = null) => {
       }
     }
 
-    // NEW: Education filter
     if (education && education !== 'Any') {
       where.education = { contains: education, mode: 'insensitive' };
     }
+
+    if (city) where.city = { contains: city, mode: 'insensitive' };
+    if (state) where.state = { contains: state, mode: 'insensitive' };
+    if (occupation) where.occupation = { contains: occupation, mode: 'insensitive' };
+    if (motherTongue) where.motherTongue = motherTongue.toUpperCase();
+    if (manglik !== undefined) where.manglik = manglik === 'true' || manglik === true;
+    if (diet) where.diet = diet;
+    if (smokingHabit) where.smokingHabit = smokingHabit;
+    if (drinkingHabit) where.drinkingHabit = drinkingHabit;
 
     // NEW: Income/AnnualIncome filter
     const incomeValue = income || annualIncome;
