@@ -80,11 +80,19 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
     const senderIsPremiumRole = sender?.role === 'PREMIUM_USER';
     const activeSubscription = sender?.subscriptions?.[0];
 
+    // --- SENDER Subscription & Free Trial Check ---
     if (!senderIsPremiumRole && !activeSubscription) {
-      throw new ApiError(
-        HTTP_STATUS.FORBIDDEN,
-        'You need a premium subscription to send messages. Upgrade to start chatting!'
-      );
+      // Allow 2 free messages total for non-premium users
+      const totalSentMessages = await prisma.message.count({
+        where: { senderId },
+      });
+
+      if (totalSentMessages >= 2) {
+        throw new ApiError(
+          HTTP_STATUS.FORBIDDEN,
+          'You have reached your limit of 2 free messages. Upgrade to Premium for unlimited chatting!'
+        );
+      }
     }
 
     // Check plan-level message limits (only for subscription users, not PREMIUM_USER role)

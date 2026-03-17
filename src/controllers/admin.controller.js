@@ -181,6 +181,31 @@ export const updateReport = asyncHandler(async (req, res) => {
     .json(new ApiResponse(HTTP_STATUS.OK, updatedReport, 'Report updated successfully'));
 });
 
+/**
+ * [NEW] Ban a user (Admin)
+ */
+export const banUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body;
+  const user = await userService.banUser(userId, reason, req.user.id);
+  await logAdminAction(req, 'USER_BANNED', `Banned user ${user.email} for: ${reason}`, { userId, reason });
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, user, 'User banned successfully'));
+});
+
+/**
+ * [NEW] Unban a user (Admin)
+ */
+export const unbanUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const user = await userService.unbanUser(userId);
+  await logAdminAction(req, 'USER_UNBANNED', `Unbanned user ${user.email}`, { userId });
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, user, 'User unbanned successfully'));
+});
+
 // --- SUBSCRIPTION PLAN MANAGEMENT ---
 
 /**
@@ -247,4 +272,6 @@ export const adminController = {
   getPlans,
   updatePlanDiscount,
   updatePlan, // ADDED
+  banUser,
+  unbanUser,
 };

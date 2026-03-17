@@ -343,7 +343,54 @@ export const deleteFcmToken = async (userId, token) => {
     }
   } catch (error) {
     logger.error('Error in deleteFcmToken:', error);
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error deleting FCM token');
+  }
+};
+
+/**
+ * Ban a user (Admin Only)
+ */
+export const banUser = async (userId, reason, bannedBy) => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: {
+        isBanned: true,
+        banReason: reason,
+        bannedAt: new Date(),
+        bannedBy: bannedBy ? parseInt(bannedBy) : null,
+      },
+      include: { profile: true },
+    });
+
+    logger.warn(`User banned: ${userId} for ${reason}`);
+    return user;
+  } catch (error) {
+    logger.error('Error in banUser:', error);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error banning user');
+  }
+};
+
+/**
+ * Unban a user (Admin Only)
+ */
+export const unbanUser = async (userId) => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: {
+        isBanned: false,
+        banReason: null,
+        bannedAt: null,
+        bannedBy: null,
+      },
+      include: { profile: true },
+    });
+
+    logger.info(`User unbanned: ${userId}`);
+    return user;
+  } catch (error) {
+    logger.error('Error in unbanUser:', error);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error unbanning user');
   }
 };
 
@@ -357,4 +404,6 @@ export const userService = {
   deleteFcmToken,
   getAllUsers,
   updateUserRole,
+  banUser,
+  unbanUser,
 };

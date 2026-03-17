@@ -69,6 +69,16 @@ router.delete(
   validate(userIdParamSchema),
   adminController.deleteUser
 );
+router.post(
+  '/users/:userId/ban',
+  validate(userIdParamSchema),
+  adminController.banUser
+);
+router.post(
+  '/users/:userId/unban',
+  validate(userIdParamSchema),
+  adminController.unbanUser
+);
 
 // --- Profile Management ---
 router.get(
