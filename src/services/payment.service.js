@@ -42,7 +42,7 @@ export const createOrder = async (userId, planId) => {
       );
     }
 
-    const amount = plan.price; // Secure amount from DB
+    const amount = Number(plan.price); // Secure amount from DB
     const durationInDays = plan.duration;
 
     // 2. Create a PENDING UserSubscription
@@ -114,7 +114,7 @@ export const createOrder = async (userId, planId) => {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      `Failed to create payment order: ${error.message}`
+      `Failed to create payment order: ${error.error?.description || error.message || 'Unknown Razorpay error'}`
     );
   }
 };
@@ -195,7 +195,7 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
       data: {
         userId,
         subscriptionId: subscription.id,
-        amount: newPlan.price,
+        amount: Number(newPlan.price),
         currency: 'INR',
         status: PAYMENT_STATUS.PENDING,
         transactionId,
@@ -204,7 +204,7 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
 
     // 7. Create Razorpay order
     const razorpayOrder = await razorpayInstance.orders.create({
-      amount: newPlan.price * 100, // Convert to paise
+      amount: Number(newPlan.price) * 100, // Convert to paise
       currency: 'INR',
       receipt: `upgrade_${subscription.id}_pay_${payment.id}`,
       notes: {
@@ -246,7 +246,7 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      `Failed to create upgrade order: ${error.message}`
+      `Failed to create upgrade order: ${error.error?.description || error.message || 'Unknown Razorpay error'}`
     );
   }
 };
