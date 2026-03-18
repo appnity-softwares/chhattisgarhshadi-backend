@@ -1,16 +1,18 @@
 import { Router } from 'express';
 import { adminSuccessStoryController } from '../controllers/admin.successStory.controller.js';
 import { validate } from '../middleware/validate.middleware.js';
-import Joi from 'joi';
+import { z } from 'zod';
 
 const router = Router();
 
 // Validation schema
-const updateStorySchema = Joi.object({
-    status: Joi.string().valid('PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED'),
-    isFeatured: Joi.boolean(),
-    title: Joi.string().max(200).optional(),
-    story: Joi.string().optional().min(50)
+const updateStorySchema = z.object({
+  body: z.object({
+    status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED']).optional(),
+    isFeatured: z.boolean().optional(),
+    title: z.string().max(200).optional(),
+    story: z.string().min(50).optional()
+  })
 });
 
 router.get('/', adminSuccessStoryController.list);
