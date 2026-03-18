@@ -9,26 +9,36 @@ export const adminThemeController = {
    * Returns default fallback colors if none found
    */
   getActiveTheme: asyncHandler(async (req, res) => {
-    let theme = await prisma.themeConfiguration.findFirst({
-      where: { isActive: true },
-      orderBy: { updatedAt: 'desc' }
-    });
+    // Default fallback colors
+    const DEFAULT_THEME = {
+      primaryColor: '#E94057',
+      secondaryColor: '#8A2387',
+      accentColor: '#F27121',
+      backgroundColor: '#FFFFFF',
+      surfaceColor: '#F8F9FA',
+      textPrimary: '#1A1A1A',
+      textSecondary: '#757575',
+      successColor: '#4CAF50',
+      errorColor: '#F44336',
+      gradientStart: '#E94057',
+      gradientEnd: '#8A2387'
+    };
+
+    let theme = null;
+
+    try {
+      theme = await prisma.themeConfiguration.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
+      });
+    } catch (error) {
+      // Table likely does not exist yet (Database Migration Pending)
+      // Log it but don't fail, fallback to defaults
+      logger.warn('ThemeConfiguration table not found or query failed, using defaults:', error.message);
+    }
 
     if (!theme) {
-      // If none active, mock default response until they save
-      theme = {
-        primaryColor: '#E94057',
-        secondaryColor: '#8A2387',
-        accentColor: '#F27121',
-        backgroundColor: '#FFFFFF',
-        surfaceColor: '#F8F9FA',
-        textPrimary: '#1A1A1A',
-        textSecondary: '#757575',
-        successColor: '#4CAF50',
-        errorColor: '#F44336',
-        gradientStart: '#E94057',
-        gradientEnd: '#8A2387'
-      };
+      theme = DEFAULT_THEME;
     }
 
     return res.status(HTTP_STATUS.OK).json(

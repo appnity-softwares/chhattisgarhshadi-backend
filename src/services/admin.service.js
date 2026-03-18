@@ -10,6 +10,16 @@ import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js'
  */
 const getDashboardStats = async () => {
   try {
+    // Helper to safely count even if table doesn't exist yet
+    const safeCount = async (model, where = {}) => {
+      try {
+        return await prisma[model].count({ where });
+      } catch (err) {
+        logger.warn(`SafeCount failed for ${model}, returning 0. Error: ${err.message}`);
+        return 0;
+      }
+    };
+
     const [
       totalUsers,
       totalProfiles,
@@ -20,14 +30,14 @@ const getDashboardStats = async () => {
       pendingStories,
       activeSubscriptions,
     ] = await Promise.all([
-      prisma.user.count(),
-      prisma.profile.count(),
-      prisma.matchRequest.count(),
-      prisma.message.count(),
-      prisma.payment.count(),
-      prisma.report.count({ where: { status: 'PENDING' } }),
-      prisma.successStory.count({ where: { status: 'PENDING' } }),
-      prisma.userSubscription.count({ where: { status: 'ACTIVE', endDate: { gt: new Date() } } }),
+      safeCount('user'),
+      safeCount('profile'),
+      safeCount('matchRequest'),
+      safeCount('message'),
+      safeCount('payment'),
+      safeCount('report', { status: 'PENDING' }),
+      safeCount('successStory', { status: 'PENDING' }),
+      safeCount('userSubscription', { status: 'ACTIVE', endDate: { gt: new Date() } }),
     ]);
 
     return {
