@@ -8,6 +8,10 @@ export const adminNotificationController = {
     sendBulk: asyncHandler(async (req, res) => {
         const { title, body, imageUrl, target } = req.body;
 
+        if (!title || !body) {
+            throw new ApiError(400, 'Title and Body are required');
+        }
+
         let query = { isActive: true };
         if (target === 'PREMIUM') {
             query.OR = [
@@ -19,36 +23,66 @@ export const adminNotificationController = {
                 { role: 'USER' },
                 { subscriptions: { none: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
             ];
+        } else if (target === 'INACTIVE') {
+          // Users who haven't logged in for 30 days
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          query.lastLoginAt = { lt: thirtyDaysAgo };
         }
-        // Add more targeting logic as needed
 
         const users = await prisma.user.findMany({
             where: query,
             select: { id: true, fcmTokens: true }
         });
 
-        // Loop and send - In a real production app, this should be a background job
-        const results = await Promise.all(users.map(async (user) => {
-            if (user.fcmTokens.length > 0) {
-                return notificationService.sendPushNotification(
-                    user.fcmTokens.map(t => t.token),
-                    {
-                        notification: { title, body, image: imageUrl },
-                        data: { type: 'SYSTEM_BROADCAST' }
-                    }
-                );
-            }
-            return null;
-        }));
+        // 1. Create broadcast record
+        const broadcast = await prisma.broadcast.create({
+          data: {
+            title,
+            body,
+            imageUrl,
+            target: target || 'EVERYONE',
+            status: 'SENDING'
+          }
+        });
 
-        return res.json(new ApiResponse(200, { sentCount: results.filter(r => r).length }, 'Bulk notification process started'));
+        // 2. Loop and send - In a real production app, this should be a background job
+        // Collect all tokens
+        const allTokens = users.flatMap(u => u.fcmTokens.map(t => t.token));
+        
+        if (allTokens.length > 0) {
+            // Using the multicast helper from notificationService
+            await notificationService.sendPushNotification(
+                allTokens,
+                {
+                    notification: { title, body, image: imageUrl },
+                    data: { 
+                      type: 'SYSTEM_BROADCAST',
+                      broadcastId: String(broadcast.id)
+                    }
+                }
+            );
+
+            // Update record as sent
+            await prisma.broadcast.update({
+              where: { id: broadcast.id },
+              data: { status: 'SENT', sentCount: allTokens.length, sentAt: new Date() }
+            });
+        } else {
+          await prisma.broadcast.update({
+            where: { id: broadcast.id },
+            data: { status: 'FAILED', statusNote: 'No target devices found' }
+          });
+        }
+
+        return res.json(new ApiResponse(200, { sentCount: allTokens.length }, 'Bulk notification process completed'));
     }),
 
     getHistory: asyncHandler(async (req, res) => {
-        // Since we don't have a systemic "BroadcastHistory" model yet, 
-        // we can fetch recent notifications of type SYSTEM_ALERT if we stored them individually,
-        // or just return success.
-        // For now, let's just return a placeholder or implement a simpleBroadcast table later.
-        return res.json(new ApiResponse(200, [], 'History fetched'));
+        const broadcasts = await prisma.broadcast.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 20
+        });
+        return res.json(new ApiResponse(200, broadcasts, 'History fetched'));
     })
 };

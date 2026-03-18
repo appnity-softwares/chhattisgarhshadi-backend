@@ -74,39 +74,61 @@ export const getDailyUsage = async (userId) => {
 };
 
 /**
- * Get user's plan type
+ * Get user's active plan and its limits
  * @param {number} userId - User ID
  */
-export const getUserPlanType = async (userId) => {
-    const subscription = await prisma.userSubscription.findFirst({
-        where: {
-            userId,
-            status: 'ACTIVE',
-            endDate: { gte: new Date() },
-        },
-        include: { plan: true },
-        orderBy: { endDate: 'desc' },
+export const getUserPlanAndLimits = async (userId) => {
+    // 1. Get user with active subscription
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+            subscriptions: {
+                where: {
+                    status: 'ACTIVE',
+                    endDate: { gt: new Date() },
+                },
+                include: { plan: true },
+                orderBy: { endDate: 'desc' },
+                take: 1
+            }
+        }
     });
 
-    if (!subscription) return 'FREE';
+    const activeSub = user?.subscriptions?.[0];
+    const plan = activeSub?.plan;
 
-    const planName = subscription.plan?.name?.toUpperCase() || '';
-    if (planName.includes('PREMIUM') || planName.includes('GOLD')) return 'PREMIUM';
-    if (planName.includes('299') || planName.includes('BASIC')) return 'BASIC_299';
+    // Default FREE limits (should ideally also be in DB as a special plan)
+    const DEFAULT_FREE = {
+        profileViews: 5,
+        contactRequests: 3,
+        interestsSent: 5,
+        messagesPerDay: 5,
+    };
 
-    return 'FREE';
+    if (!plan) {
+        return {
+            planType: 'FREE',
+            limits: DEFAULT_FREE
+        };
+    }
+
+    return {
+        planType: plan.name,
+        limits: {
+            profileViews: plan.maxProfileViews || 5,
+            contactRequests: plan.maxContactViews === 0 ? -1 : plan.maxContactViews,
+            interestsSent: plan.maxInterestsSend === 0 ? -1 : plan.maxInterestsSend,
+            messagesPerDay: plan.maxMessagesSend === 0 ? -1 : plan.maxMessagesSend,
+        }
+    };
 };
 
 /**
- * Get limits for user's plan
+ * Get limits for user
  * @param {number} userId - User ID
  */
 export const getUserLimits = async (userId) => {
-    const planType = await getUserPlanType(userId);
-    return {
-        planType,
-        limits: USAGE_LIMITS[planType] || USAGE_LIMITS.FREE,
-    };
+    return await getUserPlanAndLimits(userId);
 };
 
 /**
@@ -215,9 +237,15 @@ export const cleanupOldUsageRecords = async () => {
     return result.count;
 };
 
+export const getUserPlanType = async (userId) => {
+    const { planType } = await getUserPlanAndLimits(userId);
+    return planType;
+};
+
 export default {
     getDailyUsage,
     getUserPlanType,
+    getUserPlanAndLimits,
     getUserLimits,
     canPerformAction,
     incrementUsage,

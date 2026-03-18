@@ -138,6 +138,10 @@ router.use('/faq', faqRoutes);
 import webRoutes from './web.routes.js';
 router.use('/web', webRoutes);
 
+// Success Story routes
+import successStoryRoutes from './successStory.routes.js';
+router.use('/success-stories', successStoryRoutes);
+
 // Health check endpoint with detailed status
 import prisma from '../config/database.js';
 import { isRedisConnected } from '../config/redis.js';

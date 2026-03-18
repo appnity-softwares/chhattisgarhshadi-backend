@@ -16,15 +16,18 @@ const getDashboardStats = async () => {
       totalMatches,
       totalMessages,
       totalPayments,
-      pendingReports, // ADDED
+      pendingReports,
+      pendingStories,
+      activeSubscriptions,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.profile.count(),
       prisma.matchRequest.count(),
       prisma.message.count(),
-      prisma.payment.count(), // Corrected from 'payments'
-      // ADDED: Count pending reports
+      prisma.payment.count(),
       prisma.report.count({ where: { status: 'PENDING' } }),
+      prisma.successStory.count({ where: { status: 'PENDING' } }),
+      prisma.userSubscription.count({ where: { status: 'ACTIVE', endDate: { gt: new Date() } } }),
     ]);
 
     return {
@@ -34,6 +37,8 @@ const getDashboardStats = async () => {
       totalMessages,
       totalPayments,
       pendingReports, // ADDED
+      pendingStories, // NEW
+      activeSubscriptions, // NEW
     };
   } catch (error) {
     logger.error('Error in getDashboardStats:', error);

@@ -15,20 +15,16 @@ import {
   updateReportSchema,
 } from '../validation/admin.validation.js';
 
-// ADDED: Import new agent routes
 import agentRoutes from './agent.routes.js';
-// ADDED: Import verification routes
-import verificationRoutes from './verification.routes.js';
 // ADDED: Import analytics routes
 import analyticsRoutes from './analytics.routes.js';
 // ADDED: Import activity log routes
 import activityLogRoutes from './activityLog.routes.js';
-// ADDED: Import audit log routes
-import auditLogRoutes from './auditLog.routes.js';
 // ADDED: Import new admin features
 import promoCodeRoutes from './promoCode.routes.js';
 import adminNotificationRoutes from './admin.notification.routes.js';
 import adminThemeRoutes from './admin.theme.routes.js';
+import adminSuccessStoryRoutes from './admin.successStory.routes.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // ADDED: Memory storage for Excel
@@ -120,14 +116,7 @@ router.put(
   adminController.updateReport
 );
 
-// --- ADDED: Agent Management ---
-// All routes in agentRoutes will be prefixed with /admin/agents
-// and will be protected by the requireAdmin middleware
 router.use('/agents', agentRoutes);
-
-// --- ADDED: Verification Management ---
-// All routes will be prefixed with /admin/verifications
-router.use('/verifications', verificationRoutes);
 
 // --- ADDED: Analytics ---
 // All routes will be prefixed with /admin/analytics
@@ -142,13 +131,10 @@ router.patch('/plans/:planId/discount', adminController.updatePlanDiscount);
 // All routes will be prefixed with /admin/activity-logs
 router.use('/activity-logs', activityLogRoutes);
 
-// --- ADDED: Audit Logs ---
-// All routes will be prefixed with /admin/audit-logs
-router.use('/audit-logs', auditLogRoutes);
-
 // --- ADDED: Marketing & Notifications ---
 router.use('/promo-codes', promoCodeRoutes);
 router.use('/notifications', adminNotificationRoutes);
 router.use('/theme', adminThemeRoutes);
+router.use('/success-stories', adminSuccessStoryRoutes);
 
 export default router;

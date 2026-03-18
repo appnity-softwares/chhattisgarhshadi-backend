@@ -329,6 +329,10 @@ model User {
   mediaUploads         Media[]
   photoPrivacySettings PhotoPrivacySettings[]
 
+  // Success Stories
+  successStoriesSubmitted SuccessStory[] @relation("SuccessStoryUser1")
+  partnerSuccessStories   SuccessStory[] @relation("SuccessStoryUser2")
+
   // FCM Tokens
   fcmTokens FcmToken[]
 
@@ -987,6 +991,7 @@ model SubscriptionPlan {
 
   features String? @db.Text // JSON array
 
+  maxProfileViews       Int     @default(5) // Daily profile view limit
   maxContactViews       Int     @default(0) // 0 = unlimited
   maxMessagesSend       Int     @default(0)
   maxInterestsSend      Int     @default(0)
@@ -1584,122 +1589,6 @@ model NotificationPreferences {
 }
 
 // ============================================
-// AUDIT & MONITORING (A+ IMPROVEMENTS)
-// ============================================
-
-/// Audit Log tracks all critical database changes for compliance and debugging
-model AuditLog {
-  id Int @id @default(autoincrement())
-
-  // What was changed
-  tableName  String @db.VarChar(100)
-  recordId   Int
-  action     String @db.VarChar(20) // INSERT, UPDATE, DELETE
-
-  // Change details
-  oldValues Json? // Previous state (for UPDATE/DELETE)
-  newValues Json? // New state (for INSERT/UPDATE)
-  changedFields String? @db.Text // List of changed fields
-
-  // Who made the change
-  changedBy   Int?
-  changedByType String @default("USER") @db.VarChar(20) // USER, ADMIN, SYSTEM
-
-  // Request context
-  ipAddress  String? @db.Inet
-  userAgent  String? @db.Text
-  requestId  String? @db.VarChar(50) // For tracing
-
-  // Timestamps
-  changedAt DateTime @default(now())
-
-  @@index([tableName, recordId])
-  @@index([changedBy])
-  @@index([changedAt(sort: Desc)])
-  @@index([action])
-  @@index([tableName, changedAt(sort: Desc)])
-  @@map("audit_logs")
-}
-
-/// Database Metrics for performance monitoring
-model DatabaseMetrics {
-  id Int @id @default(autoincrement())
-
-  // Metric details
-  metricName  String @db.VarChar(100) // e.g., "slow_query", "table_size", "index_usage"
-  metricValue Float
-  metricUnit  String @db.VarChar(20) // ms, rows, bytes, percent
-
-  // Context
-  tableName   String? @db.VarChar(100)
-  queryType   String? @db.VarChar(20) // SELECT, INSERT, UPDATE, DELETE
-
-  // Additional data
-  metadata Json?
-
-  // Timestamp
-  recordedAt DateTime @default(now())
-
-  @@index([metricName, recordedAt(sort: Desc)])
-  @@index([tableName])
-  @@map("database_metrics")
-}
-
-/// Search Log for analytics and query optimization
-model SearchLog {
-  id Int @id @default(autoincrement())
-
-  // Who searched
-  userId Int?
-
-  // Search parameters
-  searchFilters Json // All applied filters
-  resultCount   Int  // Number of results returned
-
-  // Performance
-  executionTimeMs Int // Query execution time
-
-  // Context
-  searchType String @db.VarChar(50) // PROFILE, MATCH, QUICK
-  platform   String @default("MOBILE") @db.VarChar(20) // MOBILE, WEB, ADMIN
-
-  // Timestamp
-  searchedAt DateTime @default(now())
-
-  @@index([userId])
-  @@index([searchedAt(sort: Desc)])
-  @@index([searchType, searchedAt(sort: Desc)])
-  @@index([executionTimeMs(sort: Desc)]) // Find slow searches
-  @@map("search_logs")
-}
-
-/// API Rate Limit Tracking for security
-model ApiRateLimitLog {
-  id Int @id @default(autoincrement())
-
-  // Who hit the limit
-  userId    Int?
-  ipAddress String @db.Inet
-
-  // What endpoint
-  endpoint String @db.VarChar(255)
-  method   String @db.VarChar(10) // GET, POST, PUT, DELETE
-
-  // Rate limit info
-  limitHitCount Int @default(1)
-  windowStart   DateTime
-  windowEnd     DateTime
-
-  // Timestamp
-  createdAt DateTime @default(now())
-
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([ipAddress, createdAt(sort: Desc)])
-  @@index([endpoint])
-  @@map("api_rate_limit_logs")
-}
-
-// ============================================
 // DAILY USAGE TRACKING (Free User Limits)
 // ============================================
 
@@ -1845,5 +1734,83 @@ model ThemeConfiguration {
   updatedAt    DateTime @updatedAt
 
   @@map("theme_configurations")
+}
+
+// ============================================
+// SUCCESS STORIES (USER TESTIMONIALS)
+// ============================================
+
+/// Stores success stories from couples who found each other
+model SuccessStory {
+  id Int @id @default(autoincrement())
+
+  // Couple Details
+  userId1 Int // The user who submitted
+  user1   User @relation("SuccessStoryUser1", fields: [userId1], references: [id])
+  
+  userId2 Int? // Optionally, the other user (if they are on the platform)
+  user2   User? @relation("SuccessStoryUser2", fields: [userId2], references: [id])
+
+  partnerName String? @db.VarChar(100) // If user2 is not on the platform
+
+  // Story Details
+  title       String?  @db.VarChar(200)
+  story       String   @db.Text
+  weddingDate DateTime?
+
+  // Media
+  imageUrl    String? @db.Text
+  galleryUrls String? @db.Text // JSON array of additional photos
+
+  // Admin Control
+  status     SuccessStoryStatus @default(PENDING)
+  isFeatured Boolean            @default(false)
+  
+  // Metadata
+  views      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, isFeatured])
+  @@index([userId1])
+  @@map("success_stories")
+}
+
+enum SuccessStoryStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+// ============================================
+// ADMIN BROADCASTS (Push Notification History)
+// ============================================
+
+/// Tracks bulk push notifications sent by admins
+model Broadcast {
+  id Int @id @default(autoincrement())
+
+  // Content
+  title    String  @db.VarChar(200)
+  body     String  @db.Text
+  imageUrl String? @db.Text
+  
+  // Targeting
+  target      String @default("EVERYONE") @db.VarChar(50) // EVERYONE, PREMIUM, FREE, INACTIVE
+  sentCount   Int    @default(0)
+  failedCount Int    @default(0)
+
+  // System
+  scheduledAt DateTime?
+  sentAt      DateTime? @default(now())
+  status      String    @default("SENT") @db.VarChar(20) // DRAFT, SENDING, SENT, FAILED
+  statusNote  String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt(sort: Desc)])
+  @@map("broadcasts")
 }
 
