@@ -15,7 +15,21 @@ const updateStorySchema = z.object({
   })
 });
 
+const createStorySchema = z.object({
+  body: z.object({
+    userId1: z.number(),
+    userId2: z.number().optional(),
+    partnerName: z.string().optional(),
+    title: z.string().max(200),
+    story: z.string().min(50),
+    weddingDate: z.string().optional(),
+    imageUrl: z.string().url().optional(),
+    isFeatured: z.boolean().optional()
+  })
+});
+
 router.get('/', adminSuccessStoryController.list);
+router.post('/', validate(createStorySchema), adminSuccessStoryController.create);
 router.patch('/:id', validate(updateStorySchema), adminSuccessStoryController.update);
 router.delete('/:id', adminSuccessStoryController.delete);
 

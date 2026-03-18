@@ -86,6 +86,8 @@ router.get(
   validate(paginationQuerySchema),
   adminController.getAllProfiles
 );
+router.put('/profiles/:profileId/verify', adminController.verifyProfile);
+router.put('/profiles/:profileId/status', adminController.updateProfileStatus);
 
 // --- Match Management ---
 router.get(

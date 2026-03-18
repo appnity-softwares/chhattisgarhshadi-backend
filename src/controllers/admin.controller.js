@@ -255,6 +255,38 @@ export const updatePlan = asyncHandler(async (req, res) => {
 });
 
 
+/**
+ * [NEW] Verify a profile (Admin)
+ */
+export const verifyProfile = asyncHandler(async (req, res) => {
+  const { profileId } = req.params;
+  const { isVerified } = req.body;
+
+  const updatedProfile = await adminService.verifyProfile(parseInt(profileId), isVerified);
+  await logAdminAction(req, 'PROFILE_VERIFIED', `Verified profile ${profileId}`, { profileId, isVerified });
+
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedProfile, `Profile ${isVerified ? 'verified' : 'unverified'} successfully`));
+});
+
+
+/**
+ * [NEW] Update profile status (Admin)
+ */
+export const updateProfileStatus = asyncHandler(async (req, res) => {
+  const { profileId } = req.params;
+  const { isPublished, statusReason } = req.body;
+
+  const updatedProfile = await adminService.updateProfileStatus(parseInt(profileId), isPublished, statusReason);
+  await logAdminAction(req, 'PROFILE_STATUS_UPDATED', `Updated status of profile ${profileId}`, { profileId, isPublished });
+
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedProfile, 'Profile status updated successfully'));
+});
+
+
 export const adminController = {
   adminLogin,
   getAllUsers,
@@ -274,4 +306,6 @@ export const adminController = {
   updatePlan, // ADDED
   banUser,
   unbanUser,
+  verifyProfile, // ADDED
+  updateProfileStatus, // ADDED
 };

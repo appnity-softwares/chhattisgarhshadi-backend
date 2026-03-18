@@ -76,8 +76,38 @@ export const deleteStory = async (id) => {
     }
 };
 
+/**
+ * Create a success story (Admin can specify userId1)
+ */
+export const createStory = async (data) => {
+    try {
+        const { userId1, userId2, partnerName, title, story, weddingDate, imageUrl, isFeatured } = data;
+
+        const newStory = await prisma.successStory.create({
+            data: {
+                userId1: parseInt(userId1),
+                userId2: userId2 ? parseInt(userId2) : null,
+                partnerName,
+                title,
+                story,
+                weddingDate: weddingDate ? new Date(weddingDate) : null,
+                imageUrl,
+                isFeatured: isFeatured || false,
+                status: 'APPROVED' // Admin created stories are auto-approved
+            }
+        });
+
+        logger.info(`Success story created by admin for user ${userId1}`);
+        return newStory;
+    } catch (error) {
+        logger.error('Error in creating story by admin:', error);
+        throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to create story');
+    }
+};
+
 export const adminSuccessStoryService = {
     getAllStories,
     updateStory,
-    deleteStory
+    deleteStory,
+    createStory, // ADDED
 };

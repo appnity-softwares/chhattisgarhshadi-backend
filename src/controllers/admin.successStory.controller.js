@@ -28,5 +28,13 @@ export const adminSuccessStoryController = {
     delete: asyncHandler(async (req, res) => {
         await adminSuccessStoryService.deleteStory(parseInt(req.params.id));
         return res.json(new ApiResponse(200, null, 'Success story deleted successfully'));
+    }),
+
+    /**
+     * Create a story (Admin-direct)
+     */
+    create: asyncHandler(async (req, res) => {
+        const story = await adminSuccessStoryService.createStory(req.body);
+        return res.json(new ApiResponse(201, story, 'Success story created by admin'));
     })
 };

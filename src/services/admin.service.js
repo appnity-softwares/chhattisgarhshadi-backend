@@ -378,6 +378,41 @@ const updatePlan = async (planId, data) => {
   }
 };
 
+/**
+ * [NEW] Verify a profile (Admin)
+ */
+const verifyProfile = async (profileId, isVerified) => {
+  try {
+    const updatedProfile = await prisma.profile.update({
+      where: { id: profileId },
+      data: { isVerified },
+    });
+    return updatedProfile;
+  } catch (error) {
+    logger.error('Error in verifyProfile:', error);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to verify profile');
+  }
+};
+
+/**
+ * [NEW] Update profile status (Admin)
+ */
+const updateProfileStatus = async (profileId, isPublished, statusReason) => {
+  try {
+    const updatedProfile = await prisma.profile.update({
+      where: { id: profileId },
+      data: { 
+        isPublished,
+        // Using a metadata field if available or just update status
+      },
+    });
+    return updatedProfile;
+  } catch (error) {
+    logger.error('Error in updateProfileStatus:', error);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to update profile status');
+  }
+};
+
 export const adminService = {
   getDashboardStats,
   cleanupExpiredTokens,
@@ -389,4 +424,6 @@ export const adminService = {
   getPlans,
   updatePlanDiscount,
   updatePlan, // ADDED
+  verifyProfile, // ADDED
+  updateProfileStatus, // ADDED
 };

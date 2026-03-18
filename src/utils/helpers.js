@@ -15,6 +15,7 @@ export const getPaginationMetadata = (page, limit, total) => {
     page,
     totalPages,
     totalItems: total,
+    total: total, // Add this for frontend compatibility (e.g. data.pagination.total)
     itemsPerPage: limit,
     hasNextPage,
     hasPrevPage,
