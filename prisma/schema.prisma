@@ -23,6 +23,7 @@ enum AuthProvider {
 enum UserRole {
   USER
   BASIC_USER
+  VERIFIED_USER
   PREMIUM_USER
   ADMIN
 }
