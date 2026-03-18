@@ -23,6 +23,7 @@
 import prisma from '../config/database.js';
 import { getCompatibility } from './astrology.service.js';
 import { logger } from '../config/logger.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // ============================================
 // CG Districts grouped by Division
@@ -234,7 +235,7 @@ export const calculateScoreFromProfiles = async (userProfile, targetProfile) => 
     breakdown.cgBonus = calcCGBonus(userProfile, targetProfile);
 
     // === Premium Boost ===
-    if (targetProfile.user?.role === 'PREMIUM') {
+    if (hasPremiumAccess(targetProfile.user)) {
         breakdown.activity += SCORE.PREMIUM_USER;
     }
 
@@ -658,7 +659,7 @@ const scoreCandidate = (userProfile, candidate) => {
     breakdown.newProfileBoost = calcNewProfileBoost(candidate);
     breakdown.cgBonus = calcCGBonus(userProfile, candidate);
 
-    if (candidate.user?.role === 'PREMIUM') {
+    if (hasPremiumAccess(candidate.user)) {
         breakdown.activity += SCORE.PREMIUM_USER;
     }
 

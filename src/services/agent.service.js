@@ -208,9 +208,15 @@ export const getUsersByAgent = async (agentId, query) => {
 
     // Filter by premium status if requested
     if (isPremium === 'true') {
-      where.role = 'PREMIUM_USER';
+      where.OR = [
+        { role: { in: ['PREMIUM_USER', 'BASIC_USER', 'VIP_USER'] } },
+        { subscriptions: { some: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+      ];
     } else if (isPremium === 'false') {
-      where.role = 'USER';
+      where.AND = [
+        { role: 'USER' },
+        { subscriptions: { none: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+      ];
     }
 
     const [users, total] = await Promise.all([
@@ -274,12 +280,9 @@ export const getAgentStats = async (agentId) => {
     }
 
     // Calculate real-time stats from database
-    const [totalUsers, premiumUsers, activeUsers] = await Promise.all([
+    const [totalUsers, activeUsers] = await Promise.all([
       prisma.user.count({
         where: { agentId, deletedAt: null },
-      }),
-      prisma.user.count({
-        where: { agentId, role: 'PREMIUM_USER', deletedAt: null },
       }),
       prisma.user.count({
         where: { agentId, isActive: true, isBanned: false, deletedAt: null },
@@ -291,7 +294,7 @@ export const getAgentStats = async (agentId) => {
       where: { id: agentId },
       data: {
         totalUsersAdded: totalUsers,
-        premiumUsers: premiumUsers,
+        premiumUsers: 0, // No longer tracking for agents
         activeUsers: activeUsers,
       },
     });
@@ -303,9 +306,7 @@ export const getAgentStats = async (agentId) => {
       status: agent.status,
       stats: {
         totalUsersRegistered: totalUsers,
-        premiumUsers: premiumUsers,
         activeUsers: activeUsers,
-        freeUsers: totalUsers - premiumUsers,
       },
       createdAt: agent.createdAt,
     };

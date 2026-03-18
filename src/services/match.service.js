@@ -9,6 +9,7 @@ import { blockService } from './block.service.js';
 import { notificationService } from './notification.service.js';
 // ADDED: Import socket for real-time match updates
 import { getSocketIoInstance } from '../socket/index.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Reusable Prisma select for public-facing user data
 // Prevents leaking sensitive fields like email, phone, etc.
@@ -62,9 +63,9 @@ export const sendMatchRequest = async (fromUserId, receiverId, message) => {
       },
     });
 
-    const isPremiumRole = sender?.role === 'PREMIUM_USER';
+    const isPremiumRole = hasPremiumAccess(sender);
     const activeSubscription = sender?.subscriptions?.[0];
-    const isPremium = isPremiumRole || !!activeSubscription;
+    const isPremium = isPremiumRole;
 
     // --- Free User Limit Check ---
     if (!isPremium) {

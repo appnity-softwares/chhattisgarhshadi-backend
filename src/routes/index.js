@@ -5,6 +5,10 @@ const router = express.Router();
 import authRoutes from './auth.routes.js';
 router.use('/auth', authRoutes);
 
+// Theme Route (Public for App Config)
+import themeRoutes from './theme.routes.js';
+router.use('/theme', themeRoutes);
+
 // User routes
 import userRoutes from './user.routes.js';
 router.use('/users', userRoutes);

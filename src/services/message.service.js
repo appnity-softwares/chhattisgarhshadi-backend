@@ -8,6 +8,7 @@ import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
 // ADDED: Import notificationService to send push notifications
 import { notificationService } from './notification.service.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Define a reusable Prisma select for public-facing user data
 // This prevents leaking sensitive fields like email, phone, etc.
@@ -77,7 +78,7 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
       },
     });
 
-    const senderIsPremiumRole = sender?.role === 'PREMIUM_USER';
+    const senderIsPremiumRole = hasPremiumAccess(sender);
     const activeSubscription = sender?.subscriptions?.[0];
 
     // --- SENDER Subscription & Free Trial Check ---

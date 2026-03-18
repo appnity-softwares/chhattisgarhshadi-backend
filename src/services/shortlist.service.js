@@ -6,6 +6,7 @@ import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js'
 import { logger } from '../config/logger.js';
 // ADDED: Import notification service
 import { notificationService } from './notification.service.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Reusable select for public user data (to nest in the response)
 const userPublicSelect = {
@@ -49,7 +50,7 @@ export const addToShortlist = async (userId, shortlistedUserId, note) => {
       },
     });
 
-    const isPremium = user?.subscriptions?.length > 0 || user?.role === 'PREMIUM_USER';
+    const isPremium = hasPremiumAccess(user);
 
     // --- Free User Limit Check ---
     if (!isPremium) {

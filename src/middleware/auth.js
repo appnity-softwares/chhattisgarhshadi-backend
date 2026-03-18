@@ -3,6 +3,7 @@ import prisma from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../utils/constants.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 /**
  * Authenticate user with JWT token
@@ -152,8 +153,8 @@ export const requireSubscription = async (req, res, next) => {
       return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Authentication required'));
     }
 
-    // FIRST: Check if user has PREMIUM_USER role (set manually via database or payment)
-    if (req.user.role === 'PREMIUM_USER') {
+    // FIRST: Check if user has a paid role (lifetime/grandathered/admin)
+    if (hasPremiumAccess(req.user)) {
       req.subscription = { isPremiumRole: true };
       return next();
     }

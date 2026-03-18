@@ -6,6 +6,7 @@ import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
 // Import notificationService to send notifications
 import { notificationService } from './notification.service.js'; 
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Reusable select for public user data
 const userPublicSelect = {
@@ -50,8 +51,11 @@ export const createPhotoRequest = async (requesterId, data) => {
 
     // 3. Check Requester's subscription (assuming this is a premium feature)
     // Note: This check is often best handled by the `requireSubscription` middleware on the route
-    const requester = await prisma.user.findUnique({ where: { id: requesterId } });
-    if (requester.role !== USER_ROLES.PREMIUM_USER && requester.role !== USER_ROLES.ADMIN) {
+    const requester = await prisma.user.findUnique({ 
+      where: { id: requesterId },
+      include: { subscriptions: { where: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+    });
+    if (!hasPremiumAccess(requester)) {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You must be a premium member to request photo access');
     }
 

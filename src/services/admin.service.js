@@ -259,6 +259,7 @@ const getPlans = async () => {
 
       return {
         ...plan,
+        durationDays: plan.duration,
         effectivePrice: Math.round(effectivePrice),
         hasActiveDiscount: plan.discountPercentage > 0 && (!plan.discountValidUntil || new Date(plan.discountValidUntil) > new Date()),
       };
@@ -330,7 +331,7 @@ const updatePlan = async (planId, data) => {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Plan not found');
     }
 
-    const { name, description, price, durationDays, features, isActive } = data;
+    const { name, description, price, durationDays, features, isActive, roleToAssign } = data;
 
     // Prepare update data
     const updateData = {};
@@ -343,9 +344,10 @@ const updatePlan = async (planId, data) => {
         updateData.originalPrice = price; // Initial set
       }
     }
-    if (durationDays) updateData.durationDays = durationDays;
+    if (durationDays) updateData.duration = durationDays;
     if (features) updateData.features = JSON.stringify(features);
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (roleToAssign) updateData.roleToAssign = roleToAssign;
 
     const updatedPlan = await prisma.subscriptionPlan.update({
       where: { id: planId },

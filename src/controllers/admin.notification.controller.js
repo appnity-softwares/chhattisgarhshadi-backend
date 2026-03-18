@@ -9,8 +9,17 @@ export const adminNotificationController = {
         const { title, body, imageUrl, target } = req.body;
 
         let query = { isActive: true };
-        if (target === 'PREMIUM') query.role = 'PREMIUM_USER';
-        if (target === 'FREE') query.role = 'USER';
+        if (target === 'PREMIUM') {
+            query.OR = [
+                { role: { in: ['PREMIUM_USER', 'BASIC_USER', 'VIP_USER'] } },
+                { subscriptions: { some: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+            ];
+        } else if (target === 'FREE') {
+            query.AND = [
+                { role: 'USER' },
+                { subscriptions: { none: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+            ];
+        }
         // Add more targeting logic as needed
 
         const users = await prisma.user.findMany({

@@ -7,10 +7,10 @@ import { HTTP_STATUS, SUCCESS_MESSAGES } from '../utils/constants.js';
  * Create payment order
  */
 export const createOrder = asyncHandler(async (req, res) => {
-  const { planId } = req.body; // Securely get planId
+  const { planId, promoCode } = req.body; // Securely get planId and promoCode
 
   // The service now handles fetching the amount and creating the subscription
-  const order = await paymentService.createOrder(req.user.id, planId);
+  const order = await paymentService.createOrder(req.user.id, planId, promoCode);
 
   res
     .status(HTTP_STATUS.CREATED)

@@ -15,13 +15,7 @@ import { getSocketIoInstance } from '../socket/index.js';
 // ADDED: Import notification service for push notifications
 import { notificationService } from './notification.service.js';
 
-/**
- * Create Razorpay order
- * @param {number} userId - User ID
- * @param {number} planId - The ID of the subscription plan
- * @returns {Promise<Object>}
- */
-export const createOrder = async (userId, planId) => {
+export const createOrder = async (userId, planId, promoCode = null) => {
   try {
     // Check if Razorpay is configured
     if (!isRazorpayConfigured()) {
@@ -42,10 +36,37 @@ export const createOrder = async (userId, planId) => {
       );
     }
 
-    const amount = Number(plan.price); // Secure amount from DB
+    let baseAmount = Number(plan.price);
+    let finalAmount = baseAmount;
+    let discountApplied = 0;
+    let promoId = null;
+
+    // 2. Validate and Apply Promo Code if provided
+    if (promoCode) {
+      const promo = await prisma.promoCode.findUnique({
+        where: { code: promoCode.toUpperCase(), isActive: true }
+      });
+
+      if (promo) {
+          // Check expiry
+          if (new Date() < new Date(promo.expiresAt)) {
+              // Check usage limit
+              if (!promo.maxUsage || promo.usageCount < promo.maxUsage) {
+                  promoId = promo.id;
+                  if (promo.discountType === 'PERCENTAGE') {
+                      discountApplied = (baseAmount * promo.discount) / 100;
+                  } else {
+                      discountApplied = promo.discount;
+                  }
+                  finalAmount = Math.max(0, baseAmount - discountApplied);
+              }
+          }
+      }
+    }
+
     const durationInDays = plan.duration;
 
-    // 2. Create a PENDING UserSubscription
+    // 3. Create a PENDING UserSubscription
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + durationInDays);
 
@@ -56,65 +77,75 @@ export const createOrder = async (userId, planId) => {
         status: SUBSCRIPTION_STATUS.PENDING,
         startDate: new Date(),
         endDate,
+        metadata: promoId ? JSON.stringify({ promoCode, discountApplied, baseAmount }) : null
       },
     });
 
-    // 3. Create a PENDING Payment record linked to the subscription
-    // Generate a unique transaction ID upfront
+    // 4. Create a PENDING Payment record linked to the subscription
     const transactionId = `txn_${Date.now()}_${userId}_${planId}`;
     const payment = await prisma.payment.create({
       data: {
         userId,
         subscriptionId: subscription.id,
-        amount,
+        amount: finalAmount,
         currency: 'INR',
         status: PAYMENT_STATUS.PENDING,
-        transactionId, // Required field
-        // We will add razorpayOrderId after creating the order
+        transactionId,
       },
     });
 
-    // 4. Create Razorpay order
+    // 5. Create Razorpay order
     const razorpayOrder = await razorpayInstance.orders.create({
-      amount: amount * 100, // Convert to paise
+      amount: Math.round(finalAmount * 100), // Convert to paise, ensure integer
       currency: 'INR',
-      receipt: `sub_${subscription.id}_pay_${payment.id}`, // Unique receipt
+      receipt: `sub_${subscription.id}_pay_${payment.id}`,
       notes: {
         userId,
         subscriptionId: subscription.id,
         planId: plan.id,
+        promoCode: promoCode || 'NONE'
       },
     });
 
-    // 5. Update our payment record with the Razorpay Order ID
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        razorpayOrderId: razorpayOrder.id,
-        transactionId: `txn_${payment.id}`, // Use our internal ID for tracking
-      },
-    });
+    // 6. Update our payment record and Promo usage
+    await prisma.$transaction([
+        prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+                razorpayOrderId: razorpayOrder.id,
+                transactionId: `txn_${payment.id}`,
+            },
+        }),
+        ...(promoId ? [
+            prisma.promoCode.update({
+                where: { id: promoId },
+                data: { usageCount: { increment: 1 } }
+            })
+        ] : [])
+    ]);
 
     logger.info(
-      `Payment order created: ${razorpayOrder.id} for subscription ${subscription.id}`
+      `Payment order created: ${razorpayOrder.id} for subscription ${subscription.id}. Amount: ${finalAmount} (Discount: ${discountApplied})`
     );
 
-    // 6. Return order details to the client
+    // 7. Return order details to the client
     return {
       orderId: razorpayOrder.id,
       amount: razorpayOrder.amount, // Amount in paise
       currency: razorpayOrder.currency,
       paymentId: payment.id,
-      key: config.RAZORPAY_KEY_ID, // Keep 'key' for SDK, also add razorpayKey for frontend
-      razorpayKey: config.RAZORPAY_KEY_ID, // Frontend expects this field name
+      key: config.RAZORPAY_KEY_ID,
+      razorpayKey: config.RAZORPAY_KEY_ID,
+      // Pass final amount for UI confirmation
+      finalAmount,
+      discountApplied
     };
   } catch (error) {
     logger.error('Error in createOrder:', error);
-    logger.error('Error details:', { userId, planId, message: error.message });
     if (error instanceof ApiError) throw error;
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      `Failed to create payment order: ${error.error?.description || error.message || 'Unknown Razorpay error'}`
+      `Failed to create payment order: ${error.message}`
     );
   }
 };
@@ -293,16 +324,49 @@ export const verifyPayment = async (data) => {
       };
     }
 
-    // Update payment record
-    await prisma.payment.update({
+    // Update payment record AND activate subscription + upgrade role in one transaction
+    // This mirrors the webhook handler to prevent race conditions
+    const fullPayment = await prisma.payment.findFirst({
       where: { id: payment.id },
-      data: {
-        razorpayPaymentId: razorpay_payment_id,
-        status: PAYMENT_STATUS.COMPLETED, // Mark as "COMPLETED" (client verified)
-        paymentMethod: 'Razorpay', // Placeholder
-        paidAt: new Date(),
+      include: {
+        subscription: {
+          include: { plan: true }
+        }
       },
     });
+
+    const updateOps = [
+      prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          razorpayPaymentId: razorpay_payment_id,
+          status: PAYMENT_STATUS.COMPLETED,
+          paymentMethod: 'Razorpay',
+          paidAt: new Date(),
+        },
+      }),
+    ];
+
+    // Activate subscription and upgrade role if subscription exists
+    if (fullPayment?.subscriptionId) {
+      updateOps.push(
+        prisma.userSubscription.update({
+          where: { id: fullPayment.subscriptionId },
+          data: { status: SUBSCRIPTION_STATUS.ACTIVE },
+        })
+      );
+
+      if (fullPayment.subscription?.plan?.roleToAssign) {
+        updateOps.push(
+          prisma.user.update({
+            where: { id: fullPayment.userId },
+            data: { role: fullPayment.subscription.plan.roleToAssign },
+          })
+        );
+      }
+    }
+
+    await prisma.$transaction(updateOps);
 
     logger.info(`Payment verified by client: ${razorpay_payment_id}`);
 
@@ -366,7 +430,11 @@ const handlePaymentCaptured = async (paymentEntity) => {
   try {
     const payment = await prisma.payment.findFirst({
       where: { razorpayOrderId },
-      include: { subscription: true },
+      include: { 
+        subscription: {
+          include: { plan: true }
+        }
+      },
     });
 
     if (!payment) {
@@ -410,7 +478,7 @@ const handlePaymentCaptured = async (paymentEntity) => {
       prisma.user.update({
         where: { id: payment.userId },
         data: {
-          role: USER_ROLES.PREMIUM_USER,
+          role: payment.subscription.plan.roleToAssign,
         },
       }),
     ]);

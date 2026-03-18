@@ -5,6 +5,7 @@ import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js'
 import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
 import { notificationService } from './notification.service.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Reusable select for public user data
 const userPublicSelect = {
@@ -41,7 +42,7 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
       },
     });
 
-    const isPremium = viewer?.subscriptions?.length > 0 || viewer?.role === 'PREMIUM_USER';
+    const isPremium = hasPremiumAccess(viewer);
 
     // --- Free User Daily Limit Check ---
     if (!isPremium) {
@@ -160,7 +161,8 @@ export const getWhoViewedMe = async (userId, query) => {
     });
 
     const activeSubscription = user?.subscriptions?.[0];
-    const isPremium = user?.role === 'PREMIUM_USER' ||
+    const isPremiumRole = hasPremiumAccess(user);
+    const isPremium = isPremiumRole ||
       (activeSubscription && activeSubscription.plan?.canSeeProfileVisitors === true);
 
     // Basic plan users (who can't see profile visitors) are treated like free users

@@ -22,8 +22,8 @@ enum AuthProvider {
 
 enum UserRole {
   USER
+  BASIC_USER
   PREMIUM_USER
-  VERIFIED_USER
   ADMIN
 }
 
@@ -233,7 +233,7 @@ model User {
   id Int @id @default(autoincrement())
 
   // Authentication - PHONE OTP
-  phone           String       @unique @db.VarChar(20)
+  phone           String?       @unique @db.VarChar(20)
   countryCode     String       @default("+91") @db.VarChar(5)
   isPhoneVerified Boolean      @default(false)
   phoneVerifiedAt DateTime?
@@ -982,6 +982,8 @@ model SubscriptionPlan {
   originalPrice        Decimal?  @db.Decimal(10, 2) // Original price before discount
   discountPercentage   Int       @default(0) // 0-100
   discountValidUntil   DateTime? // When discount expires (null = no expiry)
+
+  roleToAssign         UserRole @default(PREMIUM_USER)
 
   features String? @db.Text // JSON array
 
@@ -1807,5 +1809,41 @@ model PromoCode {
 
   @@index([code])
   @@map("promo_codes")
+}
+
+// ============================================
+// APP THEME & BRANDING CONFIGURATION
+// ============================================
+
+model ThemeConfiguration {
+  id           Int      @id @default(autoincrement())
+  
+  // Primary brand colors
+  primaryColor   String   @default("#E94057") @db.VarChar(20) // App's main color (matches previous CHHATTISGARHI_RED)
+  secondaryColor String   @default("#8A2387") @db.VarChar(20) // Gradients and secondary accents
+  accentColor    String   @default("#F27121") @db.VarChar(20) // Highlights, badges, energetic elements
+
+  // Structural colors
+  backgroundColor String   @default("#FFFFFF") @db.VarChar(20) // Main app background
+  surfaceColor    String   @default("#F8F9FA") @db.VarChar(20) // Cards, bottom sheets
+  
+  // Text colors
+  textPrimary    String   @default("#1A1A1A") @db.VarChar(20)
+  textSecondary  String   @default("#757575") @db.VarChar(20)
+
+  // Status/Functional colors
+  successColor   String   @default("#4CAF50") @db.VarChar(20)
+  errorColor     String   @default("#F44336") @db.VarChar(20)
+
+  // Header/Button Gradients (Optional, could just use primary/secondary)
+  gradientStart  String   @default("#E94057") @db.VarChar(20)
+  gradientEnd    String   @default("#8A2387") @db.VarChar(20)
+
+  // System
+  isActive     Boolean  @default(true) // Only one active theme at a time
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("theme_configurations")
 }
 

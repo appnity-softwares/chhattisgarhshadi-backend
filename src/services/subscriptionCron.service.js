@@ -5,6 +5,7 @@
  * - Expired subscription handling
  */
 
+import cron from 'node-cron';
 import prisma from '../config/database.js';
 import { notificationService } from '../services/notification.service.js';
 import { NOTIFICATION_TYPES, SUBSCRIPTION_STATUS, USER_ROLES } from '../utils/constants.js';
@@ -120,18 +121,28 @@ export const handleExpiredSubscriptions = async () => {
 
         for (const subscription of expiredSubscriptions) {
             try {
-                await prisma.$transaction([
-                    // 1. Mark subscription as expired
-                    prisma.userSubscription.update({
-                        where: { id: subscription.id },
-                        data: { status: SUBSCRIPTION_STATUS.EXPIRED },
-                    }),
-                    // 2. Downgrade user role (if no other active subscriptions)
-                    prisma.user.update({
+                // 1. Mark subscription as expired
+                await prisma.userSubscription.update({
+                    where: { id: subscription.id },
+                    data: { status: SUBSCRIPTION_STATUS.EXPIRED },
+                });
+
+                // 2. Prevent aggressive downgrade: Check if they have another active plan
+                const otherActiveSub = await prisma.userSubscription.findFirst({
+                    where: {
+                        userId: subscription.userId,
+                        id: { not: subscription.id },
+                        status: SUBSCRIPTION_STATUS.ACTIVE,
+                        endDate: { gt: new Date() },
+                    },
+                });
+
+                if (!otherActiveSub) {
+                    await prisma.user.update({
                         where: { id: subscription.userId },
                         data: { role: USER_ROLES.USER },
-                    }),
-                ]);
+                    });
+                }
 
                 // 3. Send expiration notification
                 await notificationService.createNotification({
@@ -198,31 +209,24 @@ export const handleExpiredInterests = async () => {
  * Call this on server startup
  */
 export const initSubscriptionCronJobs = () => {
-    // Use node-cron or similar for production
-    // For now, we'll use setInterval as a simple alternative
+    // Run expiry reminders daily at 9:00 AM
+    cron.schedule('0 9 * * *', () => {
+        sendExpiryReminders();
+    });
 
-    const ONE_HOUR = 60 * 60 * 1000;
-    const ONE_DAY = 24 * ONE_HOUR;
-
-    // Run expiry reminders every 24 hours (at ~9 AM ideally)
-    // In production, use node-cron: cron.schedule('0 9 * * *', sendExpiryReminders)
-    setInterval(sendExpiryReminders, ONE_DAY);
-
-    // Run expired handler every 24 hours (at ~midnight ideally)  
-    // In production, use node-cron: cron.schedule('0 0 * * *', handleExpiredSubscriptions)
-    setInterval(handleExpiredSubscriptions, ONE_DAY);
-
-    // Run expired interests handler every 24 hours
-    setInterval(handleExpiredInterests, ONE_DAY);
+    // Run expired subscriptions & interests handler every hour at minute 0
+    cron.schedule('0 * * * *', () => {
+        handleExpiredSubscriptions();
+        handleExpiredInterests();
+    });
 
     // Run once on startup (after 5 seconds delay to let server fully start)
     setTimeout(() => {
-        sendExpiryReminders();
         handleExpiredSubscriptions();
         handleExpiredInterests();
     }, 5000);
 
-    logger.info('Subscription cron jobs initialized (including interest expiry)');
+    logger.info('Subscription node-cron jobs successfully initialized!');
 };
 
 export default {

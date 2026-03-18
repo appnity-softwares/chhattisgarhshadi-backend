@@ -16,10 +16,7 @@ export const getActivityLogs = asyncHandler(async (req, res) => {
         endDate,
     });
 
-    res.json({
-        success: true,
-        ...result,
-    });
+    return res.json(new ApiResponse(200, result, 'Activity logs fetched'));
 });
 
 /**
@@ -27,11 +24,7 @@ export const getActivityLogs = asyncHandler(async (req, res) => {
  */
 export const getActivityStats = asyncHandler(async (req, res) => {
     const stats = await activityLogService.getActivityStats();
-
-    res.json({
-        success: true,
-        data: stats,
-    });
+    return res.json(new ApiResponse(200, stats, 'Activity stats fetched'));
 });
 
 export default {

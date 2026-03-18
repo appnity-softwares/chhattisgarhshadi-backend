@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { paymentController } from '../controllers/payment.controller.js';
+import { promoCodeController } from '../controllers/promoCode.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
@@ -13,6 +14,9 @@ router.post('/webhook', paymentController.handleWebhook);
 
 // All other routes require authentication
 router.use(authenticate);
+
+// Promo Code Validation (Public/User)
+router.get('/promo-codes/validate', promoCodeController.validateCode);
 
 router.post(
   '/orders',

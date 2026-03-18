@@ -48,5 +48,33 @@ export const promoCodeController = {
             active,
             totalUsage: totalUsage._sum.usageCount || 0
         }, 'Stats fetched'));
+    }),
+
+    validateCode: asyncHandler(async (req, res) => {
+        const { code } = req.query;
+        if (!code) throw new ApiError(400, 'Code is required');
+
+        const promo = await prisma.promoCode.findUnique({
+            where: { code: code.toUpperCase() }
+        });
+
+        if (!promo || !promo.isActive) {
+            throw new ApiError(404, 'Invalid or inactive promo code');
+        }
+
+        if (new Date() > new Date(promo.expiresAt)) {
+            throw new ApiError(400, 'Promo code has expired');
+        }
+
+        if (promo.maxUsage && promo.usageCount >= promo.maxUsage) {
+            throw new ApiError(400, 'Promo code usage limit reached');
+        }
+
+        return res.json(new ApiResponse(200, {
+            id: promo.id,
+            code: promo.code,
+            discount: promo.discount,
+            discountType: promo.discountType
+        }, 'Promo code is valid'));
     })
 };

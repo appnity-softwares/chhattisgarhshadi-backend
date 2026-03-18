@@ -6,6 +6,7 @@ import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
 // ADDED: Import notification service for push notifications
 import { notificationService } from './notification.service.js';
+import { hasPremiumAccess } from '../utils/premium.helper.js';
 
 // Reusable select for public user data
 const userPublicSelect = {
@@ -58,9 +59,7 @@ export const createContactRequest = async (requesterId, data) => {
     }
 
     // 3. Check if Requester is a Premium User (premium feature)
-    const isPremium = requester?.subscriptions?.length > 0 ||
-      requester.role === USER_ROLES.PREMIUM_USER ||
-      requester.role === USER_ROLES.ADMIN;
+    const isPremium = hasPremiumAccess(requester);
 
     if (!isPremium) {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'Viewing contact information is a Premium feature. Upgrade to Premium to view phone and email.');

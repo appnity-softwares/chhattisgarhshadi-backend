@@ -48,6 +48,9 @@ export const errorHandler = (err, req, res, next) => {
       default:
         statusCode = HTTP_STATUS.BAD_REQUEST; // 400
         message = 'Database request error.';
+        if (config.NODE_ENV === 'development') {
+          message = `Prisma Error ${err.code}: ${err.message}`;
+        }
         logger.warn(`Prisma Error ${err.code}: ${err.message}`);
         break;
     }
