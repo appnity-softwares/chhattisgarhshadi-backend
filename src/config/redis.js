@@ -75,9 +75,9 @@ export const getRedisUrl = () => REDIS_URL;
 /**
  * Create a new Redis client instance (for pub/sub, queues, etc.)
  */
-export const createRedisClient = (connectionName) => {
+export const createRedisClient = (connectionName, options = {}) => {
     return new Redis(REDIS_URL, {
-        maxRetriesPerRequest: 3,
+        maxRetriesPerRequest: 3, // Default, can be overridden by options
         retryDelayOnFailover: 100,
         enableReadyCheck: true,
         lazyConnect: true,
@@ -86,6 +86,7 @@ export const createRedisClient = (connectionName) => {
             if (times > 10) return null;
             return Math.min(times * 200, 2000);
         },
+        ...options
     });
 };
 

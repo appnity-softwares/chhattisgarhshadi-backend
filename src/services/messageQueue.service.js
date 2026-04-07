@@ -9,7 +9,12 @@ let queue = null;
 let worker = null;
 
 const getConnection = () => {
-  const client = createRedisClient('bullmq-message');
+  // IMPORTANT: BullMQ requires maxRetriesPerRequest to be null
+  // We pass it as an option to createRedisClient
+  const client = createRedisClient('bullmq-message', { 
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false // BullMQ handles ready states internally
+  });
   client.connect().catch((err) => logger.error('BullMQ Redis connect failed:', err.message));
   return client;
 };
