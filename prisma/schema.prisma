@@ -960,6 +960,9 @@ model Message {
 
   createdAt DateTime @default(now())
 
+  // Relations
+  reports   Report[]
+
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([receiverId, createdAt(sort: Desc)])
   @@index([receiverId, status])

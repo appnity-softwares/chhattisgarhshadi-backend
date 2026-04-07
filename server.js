@@ -19,11 +19,8 @@ const PORT = config.PORT || 8080;
 // Create HTTP server
 const httpServer = http.createServer(app);
 
-// Initialize Socket.io
-const io = initializeSocket(httpServer, config);
-
-// Make io accessible to routes
-app.set('io', io);
+// Socket.io instance (will be initialized in startServer)
+let io;
 
 /**
  * Test database connection
@@ -43,30 +40,34 @@ const testDatabaseConnection = async () => {
  */
 const startServer = async () => {
   try {
-    // Test database connection
+    // 1. Test database connection
     await testDatabaseConnection();
 
-    // Initialize Firebase (optional)
+    // 2. Initialize Redis (Crucial for multi-instance socket support)
+    await initializeRedis();
+
+    // 3. Initialize Firebase
     initializeFirebase();
 
-    // ADDED: Initialize Redis for caching (optional - won't fail if Redis unavailable)
-    initializeRedis();
+    // 4. Initialize Socket.io (After Redis is connected!)
+    io = initializeSocket(httpServer, config);
+    app.set('io', io);
 
-    // Start listening
+    // 5. Start listening
     httpServer.listen(PORT, () => {
       logger.info(`Server is running on http://localhost:${PORT}`);
       logger.info(`Environment: ${config.NODE_ENV}`);
 
-      // ADDED: Initialize subscription cron jobs (expiry reminders, expired handling)
+      // Notify PM2 that the application is ready (matches wait_ready: true in ecosystem config)
+      if (process.send) {
+        process.send('ready');
+        logger.info('Sent ready signal to PM2');
+      }
+
+      // 6. Initialize background services
       initSubscriptionCronJobs();
-
-      // ADDED: Initialize FCM token cleanup cron (daily at 2 AM)
       initFcmTokenCleanup();
-
-      // ADDED: Initialize message queue worker (optional, Redis required)
       initMessageQueueWorker();
-
-      // ADDED: Initialize GDPR message cleanup cron
       initMessageCleanupCron();
     });
   } catch (error) {
