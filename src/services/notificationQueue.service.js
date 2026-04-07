@@ -186,7 +186,7 @@ export const shutdownQueue = async () => {
 };
 
 // Export queue instance for advanced usage
-export { notificationQueue, not ificationWorker };
+export { notificationQueue, notificationWorker };
 
 export default {
     queueNotification,

@@ -1,4 +1,5 @@
 import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { verifyAccessToken } from '../utils/jwt.js';
 import { logger } from '../config/logger.js';
 import { SOCKET_EVENTS } from '../utils/constants.js';
@@ -6,13 +7,9 @@ import { setupMessageHandlers } from './handlers/message.handler.js';
 import { setupNotificationHandlers } from './handlers/notification.handler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../utils/constants.js';
-import { setOnline, setOffline } from '../services/onlineStatus.service.js';
-
-/**
- * Stores mapping of userId to a Set of socket.id
- * This correctly handles multiple connections from a single user.
- */
-const onlineUsers = new Map();
+import { setOnline, setOffline, trackOnlineSocket, trackOfflineSocket, isUserOnlineRedis, getOnlineUsersRedis } from '../services/onlineStatus.service.js';
+import { messageService } from '../services/message.service.js';
+import { createRedisClient, isRedisConnected } from '../config/redis.js';
 
 let ioInstance = null;
 
@@ -37,7 +34,20 @@ export const initializeSocket = (httpServer, config) => {
       credentials: true,
     },
     pingTimeout: 60000,
+    maxHttpBufferSize: 1e6, // 1 MB payload limit
   });
+
+  // Redis adapter for multi-node scaling
+  if (isRedisConnected()) {
+    const pubClient = createRedisClient('socket-io-pub');
+    const subClient = pubClient.duplicate();
+    pubClient.connect().catch((err) => logger.error('Redis pub connect failed:', err.message));
+    subClient.connect().catch((err) => logger.error('Redis sub connect failed:', err.message));
+    io.adapter(createAdapter(pubClient, subClient));
+    logger.info('Socket.io Redis adapter enabled ✅');
+  } else {
+    logger.warn('Socket.io Redis adapter not enabled (Redis not connected)');
+  }
 
   // Authentication middleware
   io.use(async (socket, next) => {
@@ -69,22 +79,47 @@ export const initializeSocket = (httpServer, config) => {
   io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
     logger.info(`User connected: ${socket.userId} (Socket ID: ${socket.id})`);
 
-    // --- Presence Management (FIXED for multiple sockets) ---
-    // 1. Add socket to the user's Set
-    if (!onlineUsers.has(socket.userId)) {
-      onlineUsers.set(socket.userId, new Set());
-    }
-    const userSockets = onlineUsers.get(socket.userId);
+    // --- Per-socket event rate limiting (anti-flood) ---
+    const EVENT_LIMITS = {
+      [SOCKET_EVENTS.MESSAGE_SEND]: { max: 5, windowMs: 1000 },
+      [SOCKET_EVENTS.MESSAGE_READ]: { max: 5, windowMs: 1000 },
+      [SOCKET_EVENTS.TYPING_START]: { max: 3, windowMs: 1000 },
+      [SOCKET_EVENTS.TYPING_STOP]: { max: 6, windowMs: 1000 },
+      'notification:read': { max: 5, windowMs: 1000 },
+      'notification:unread-count': { max: 5, windowMs: 1000 },
+    };
 
-    // 2. If this is the first socket for this user, broadcast online status
-    if (userSockets.size === 0) {
-      socket.broadcast.emit(SOCKET_EVENTS.USER_ONLINE, {
-        userId: socket.userId,
-      });
-      // Persist online status to database
-      setOnline(socket.userId).catch(err => logger.error('Failed to set online status:', err));
-    }
-    userSockets.add(socket.id);
+    socket.data.rateLimit = new Map();
+    socket.use((packet, next) => {
+      const event = packet[0];
+      const limit = EVENT_LIMITS[event];
+      if (!limit) return next();
+
+      const now = Date.now();
+      const entry = socket.data.rateLimit.get(event);
+      if (!entry || entry.resetAt <= now) {
+        socket.data.rateLimit.set(event, { count: 1, resetAt: now + limit.windowMs });
+        return next();
+      }
+
+      if (entry.count >= limit.max) {
+        logger.warn(`Socket rate limit exceeded for user ${socket.userId}, event: ${event}`);
+        return next(new ApiError(HTTP_STATUS.TOO_MANY_REQUESTS, 'Rate limit exceeded'));
+      }
+
+      entry.count += 1;
+      return next();
+    });
+
+    // --- Presence Management (Redis, multi-node safe) ---
+    trackOnlineSocket(socket.userId, socket.id)
+      .then(({ isFirstOnline }) => {
+        if (isFirstOnline) {
+          socket.broadcast.emit(SOCKET_EVENTS.USER_ONLINE, { userId: socket.userId });
+          setOnline(socket.userId).catch(err => logger.error('Failed to set online status:', err));
+        }
+      })
+      .catch((err) => logger.error('Failed to track online socket:', err));
 
     // 3. Join user's personal room (for targeted emits)
     socket.join(`user:${socket.userId}`);
@@ -102,26 +137,32 @@ export const initializeSocket = (httpServer, config) => {
     // Setup notification handlers
     setupNotificationHandlers(io, socket);
 
+    // On connect: emit undelivered messages to this socket only
+    messageService
+      .getUndeliveredMessages(socket.userId)
+      .then((messages) => {
+        for (const message of messages) {
+          socket.emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
+        }
+        if (messages.length > 0) {
+          logger.info(`Delivered ${messages.length} undelivered messages to user ${socket.userId}`);
+        }
+      })
+      .catch((err) => logger.error('Failed to fetch undelivered messages:', err));
+
     // Handle disconnect
     socket.on(SOCKET_EVENTS.DISCONNECT, () => {
       logger.info(`User disconnected: ${socket.userId} (Socket ID: ${socket.id})`);
 
-      // --- Presence Management (FIXED for multiple sockets) ---
-      // 1. Remove socket from the user's Set
-      const userSockets = onlineUsers.get(socket.userId);
-      if (userSockets) {
-        userSockets.delete(socket.id);
-
-        // 2. If this was the last socket for this user, broadcast offline status
-        if (userSockets.size === 0) {
-          onlineUsers.delete(socket.userId);
-          socket.broadcast.emit(SOCKET_EVENTS.USER_OFFLINE, {
-            userId: socket.userId,
-          });
-          // Persist offline status and last seen to database
-          setOffline(socket.userId).catch(err => logger.error('Failed to set offline status:', err));
-        }
-      }
+      // --- Presence Management (Redis, multi-node safe) ---
+      trackOfflineSocket(socket.id, socket.userId)
+        .then(({ isNowOffline }) => {
+          if (isNowOffline) {
+            socket.broadcast.emit(SOCKET_EVENTS.USER_OFFLINE, { userId: socket.userId });
+            setOffline(socket.userId).catch(err => logger.error('Failed to set offline status:', err));
+          }
+        })
+        .catch((err) => logger.error('Failed to track offline socket:', err));
     });
 
     // Handle errors
@@ -140,16 +181,16 @@ export const initializeSocket = (httpServer, config) => {
  * @param {number} userId - User ID
  * @returns {boolean}
  */
-export const isUserOnline = (userId) => {
-  return onlineUsers.has(userId);
+export const isUserOnline = async (userId) => {
+  return isUserOnlineRedis(userId);
 };
 
 /**
  * Get all online user IDs
  * @returns {number[]} Array of online user IDs
  */
-export const getOnlineUsers = () => {
-  return Array.from(onlineUsers.keys());
+export const getOnlineUsers = async () => {
+  return getOnlineUsersRedis();
 };
 
 /**

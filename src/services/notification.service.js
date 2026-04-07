@@ -4,7 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS, NOTIFICATION_TYPES, SOCKET_EVENTS } from '../utils/constants.js';
 import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js';
 import { logger } from '../config/logger.js';
-import { getSocketIoInstance } from '../socket/index.js';
+import { getSocketIoInstance, isUserOnline } from '../socket/index.js';
 import { isRateLimited } from './rateLimit.service.js';
 
 // ===== NOTIFICATION METRICS =====
@@ -59,7 +59,7 @@ const _sendPushNotification = async (fcmToken, payload, maxRetries = 3) => {
   // Determine notification channel based on type
   const getAndroidChannel = (type) => {
     switch (type) {
-      case NOTIFICATION_TYPES.MESSAGE:
+      case NOTIFICATION_TYPES.NEW_MESSAGE:
         return 'messages_channel';
       case NOTIFICATION_TYPES.MATCH_REQUEST:
       case NOTIFICATION_TYPES.MATCH_ACCEPTED:
@@ -199,7 +199,7 @@ const _sendMulticastNotification = async (fcmTokens, payload) => {
 
   const getAndroidChannel = (type) => {
     switch (type) {
-      case NOTIFICATION_TYPES.MESSAGE:
+      case NOTIFICATION_TYPES.NEW_MESSAGE:
         return 'messages_channel';
       case NOTIFICATION_TYPES.MATCH_REQUEST:
       case NOTIFICATION_TYPES.MATCH_ACCEPTED:
@@ -294,7 +294,15 @@ const _sendMulticastNotification = async (fcmTokens, payload) => {
  * @returns {Promise<Object>}
  */
 export const createNotification = async (dto) => {
-  const { userId, type, title, message, data = {}, actionUrl } = dto;
+  const {
+    userId,
+    type,
+    title,
+    message,
+    data = {},
+    actionUrl,
+    pushPolicy = 'default', // 'default' | 'offline-only' | 'always'
+  } = dto;
 
   try {
     // ✅ RATE LIMITING: Check if user is being spammed
@@ -341,7 +349,7 @@ export const createNotification = async (dto) => {
     // 3. Send real-time In-App notification via Socket.io
     const io = getSocketIoInstance();
     if (io) {
-      io.to(`user:${userId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, notification);
+      io.to(`user:${userId}`).emit(SOCKET_EVENTS.NOTIFICATION_NEW, notification);
       logger.debug(`🔌 Socket notification sent to user:${userId}`);
     }
 
@@ -352,6 +360,17 @@ export const createNotification = async (dto) => {
     if (prefs && prefs.enableAllNotifications === false) {
       shouldSendPush = false;
       logger.info(`⏭️  Push skipped for user ${userId} - notifications disabled`);
+    }
+
+    // Optional policy: only send push if user is offline
+    if (pushPolicy === 'offline-only') {
+      const online = await isUserOnline(userId);
+      if (online) {
+        shouldSendPush = false;
+        logger.info(`⏭️  Push skipped for user ${userId} - user online`);
+      }
+    } else if (pushPolicy === 'always') {
+      shouldSendPush = true;
     }
 
     // 5. Send FCM Push Notifications using MULTICAST for efficiency

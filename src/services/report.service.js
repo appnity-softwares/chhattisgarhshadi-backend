@@ -14,13 +14,33 @@ import { logger } from '../config/logger.js';
  * @returns {Promise<Object>} The created report entry
  */
 export const createReport = async (reporterId, data) => {
-  const { reportedUserId, reason, description, evidence } = data;
+  let { reportedUserId, reason, description, evidence, messageId } = data;
 
   if (reporterId === reportedUserId) {
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'You cannot report yourself');
   }
 
   try {
+    // Optional: validate message ownership and bind report to message
+    if (messageId) {
+      const message = await prisma.message.findUnique({
+        where: { id: messageId },
+        select: { senderId: true, receiverId: true },
+      });
+
+      if (!message) {
+        throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Message not found');
+      }
+
+      const isParticipant = message.senderId === reporterId || message.receiverId === reporterId;
+      if (!isParticipant) {
+        throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot report this message');
+      }
+
+      // Always report the "other" user in this message
+      reportedUserId = message.senderId === reporterId ? message.receiverId : message.senderId;
+    }
+
     // Check if the user being reported exists
     const userToReport = await prisma.user.findUnique({
       where: { id: reportedUserId },
@@ -52,6 +72,7 @@ export const createReport = async (reporterId, data) => {
         description,
         evidence: evidence || null,
         status: 'PENDING', // Default status
+        messageId: messageId || null,
       },
     });
 

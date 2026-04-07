@@ -43,4 +43,10 @@ router.delete(
   messageController.deleteMessage
 );
 
+router.delete(
+  '/conversations/:userId',
+  validate(conversationParamsSchema),
+  messageController.deleteConversation
+);
+
 export default router;

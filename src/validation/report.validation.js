@@ -19,6 +19,7 @@ export const createReportSchema = z.object({
     
     // 'evidence' is a JSON string of URLs. 
     // We'll trust the client to format this, or you can add a file upload link later.
-    evidence: z.string().optional(), 
+    evidence: z.string().optional(),
+    messageId: z.coerce.number().int().positive().optional(),
   }),
 });

@@ -11,6 +11,8 @@ import { initSubscriptionCronJobs } from './src/services/subscriptionCron.servic
 import { initializeRedis, closeRedis } from './src/config/redis.js';
 // ADDED: Import FCM token cleanup cron
 import { initFcmTokenCleanup } from './src/services/fcmTokenCleanup.service.js';
+import { initMessageQueueWorker } from './src/services/messageQueue.service.js';
+import { initMessageCleanupCron } from './src/services/messageCleanup.service.js';
 
 const PORT = config.PORT || 8080;
 
@@ -60,6 +62,12 @@ const startServer = async () => {
 
       // ADDED: Initialize FCM token cleanup cron (daily at 2 AM)
       initFcmTokenCleanup();
+
+      // ADDED: Initialize message queue worker (optional, Redis required)
+      initMessageQueueWorker();
+
+      // ADDED: Initialize GDPR message cleanup cron
+      initMessageCleanupCron();
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

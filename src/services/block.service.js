@@ -3,6 +3,8 @@ import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../utils/constants.js';
 import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js';
 import { logger } from '../config/logger.js';
+import { getSocketIoInstance } from '../socket/index.js';
+import { SOCKET_EVENTS } from '../utils/constants.js';
 
 // Reusable select for public user data (to nest in the response)
 const userPublicSelect = {
@@ -68,6 +70,28 @@ export const blockUser = async (blockerId, blockedId, reason) => {
     ]);
 
     logger.info(`User ${blockerId} blocked user ${blockedId}. Matches and shortlists cleared.`);
+
+    // Notify both users in real-time to revoke chat access immediately
+    const io = getSocketIoInstance();
+    if (io) {
+      io.to(`user:${blockerId}`).emit(SOCKET_EVENTS.CHAT_BLOCKED, { userId: blockedId });
+      io.to(`user:${blockedId}`).emit(SOCKET_EVENTS.CHAT_BLOCKED, { userId: blockerId });
+
+      // Remove both users from any chat rooms immediately
+      const removeChatRooms = async (userId) => {
+        const sockets = await io.in(`user:${userId}`).fetchSockets();
+        for (const s of sockets) {
+          for (const room of s.rooms) {
+            if (room.startsWith('chat:')) {
+              s.leave(room);
+            }
+          }
+        }
+      };
+      removeChatRooms(blockerId).catch(err => logger.error('Failed to remove chat rooms (blocker):', err));
+      removeChatRooms(blockedId).catch(err => logger.error('Failed to remove chat rooms (blocked):', err));
+    }
+
     return blockEntry;
 
   } catch (error) {

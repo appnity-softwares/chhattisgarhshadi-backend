@@ -72,6 +72,24 @@ export const initializeRedis = () => {
  * Get Redis client instance
  */
 export const getRedisClient = () => redisClient;
+export const getRedisUrl = () => REDIS_URL;
+
+/**
+ * Create a new Redis client instance (for pub/sub, queues, etc.)
+ */
+export const createRedisClient = (connectionName) => {
+    return new Redis(REDIS_URL, {
+        maxRetriesPerRequest: 3,
+        retryDelayOnFailover: 100,
+        enableReadyCheck: true,
+        lazyConnect: true,
+        connectionName,
+        retryStrategy: (times) => {
+            if (times > 10) return null;
+            return Math.min(times * 200, 2000);
+        },
+    });
+};
 
 /**
  * Check if Redis is connected

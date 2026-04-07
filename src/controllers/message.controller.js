@@ -13,19 +13,20 @@ import { getSocketIoInstance } from '../socket/index.js';
  * Send message
  */
 export const sendMessage = asyncHandler(async (req, res) => {
-  const { receiverId, content, contentType = 'TEXT' } = req.body; // NEW: contentType param
+  const { receiverId, content, contentType = 'TEXT', clientMessageId = null } = req.body; // NEW: contentType param
 
   // The service now returns a message with a "safe" user object
-  const message = await messageService.sendMessage(
+  const { message, isDuplicate } = await messageService.sendMessage(
     req.user.id,
     receiverId,
     content,
-    contentType // NEW: pass contentType
+    contentType, // NEW: pass contentType
+    clientMessageId
   );
 
   // Emit to receiver via socket
   const io = getSocketIoInstance();
-  if (io) {
+  if (io && !isDuplicate) {
     io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
   }
 
@@ -109,6 +110,17 @@ export const deleteMessage = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Delete entire conversation
+ */
+export const deleteConversation = asyncHandler(async (req, res) => {
+  const otherUserId = parseInt(req.params.userId, 10);
+  await messageService.deleteConversation(req.user.id, otherUserId);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, null, 'Conversation deleted successfully'));
+});
+
+/**
  * Get unread message count
  */
 export const getUnreadCount = asyncHandler(async (req, res) => {
@@ -117,7 +129,7 @@ export const getUnreadCount = asyncHandler(async (req, res) => {
   res
     .status(HTTP_STATUS.OK)
     .json(
-      new ApiResponse(HTTP_STATUS.OK, { count }, 'Unread count retrieved successfully')
+      new ApiResponse(HTTP_STATUS.OK, { unreadCount: count }, 'Unread count retrieved successfully')
     );
 });
 
@@ -127,5 +139,6 @@ export const messageController = {
   getAllConversations,
   markMessagesAsRead,
   deleteMessage,
+  deleteConversation,
   getUnreadCount,
 };

@@ -224,11 +224,12 @@ export const SOCKET_EVENTS = {
   MESSAGE_DELIVERED: 'message:delivered', // ADDED: Delivery receipts
   MESSAGE_READ: 'message:read',
   NOTIFICATION_SEND: 'notification:send',
-  NOTIFICATION_RECEIVED: 'notification:received',
+  NOTIFICATION_NEW: 'notification:new',
   USER_ONLINE: 'user:online',
   USER_OFFLINE: 'user:offline',
-  TYPING_START: 'typing:started',
-  TYPING_STOP: 'typing:stopped',
+  TYPING_START: 'typing:start',
+  TYPING_STOP: 'typing:stop',
+  CHAT_BLOCKED: 'chat:blocked',
 };
 
 /**

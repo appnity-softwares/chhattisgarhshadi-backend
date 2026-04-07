@@ -35,26 +35,28 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
             return { canView: true, reason: 'admin' };
         }
 
-        // Check for ACCEPTED interest between the two users
-        const acceptedInterest = await prisma.interest.findFirst({
+        // Check for ACCEPTED match request between the two users
+        const acceptedMatch = await prisma.matchRequest.findFirst({
             where: {
+                status: 'ACCEPTED',
                 OR: [
-                    { senderId: viewerId, receiverId: profileOwnerId, status: 'ACCEPTED' },
-                    { senderId: profileOwnerId, receiverId: viewerId, status: 'ACCEPTED' },
+                    { senderId: viewerId, receiverId: profileOwnerId },
+                    { senderId: profileOwnerId, receiverId: viewerId },
                 ],
             },
         });
 
-        if (acceptedInterest) {
-            return { canView: true, reason: 'accepted_interest' };
+        if (acceptedMatch) {
+            return { canView: true, reason: 'accepted_match' };
         }
 
         // Check for direct contact request accepted
         const acceptedRequest = await prisma.contactRequest.findFirst({
             where: {
+                status: 'APPROVED',
                 OR: [
-                    { senderId: viewerId, receiverId: profileOwnerId, status: 'ACCEPTED' },
-                    { senderId: profileOwnerId, receiverId: viewerId, status: 'ACCEPTED' },
+                    { requesterId: viewerId, profileId: profileOwnerId },
+                    { requesterId: profileOwnerId, profileId: viewerId },
                 ],
             },
         });

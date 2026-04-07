@@ -16,6 +16,8 @@ export const sendMessageSchema = z.object({
       .string({ required_error: 'content is required' })
       .min(1, 'Message content cannot be empty')
       .max(2000, 'Message cannot exceed 2000 characters'),
+    contentType: z.enum(['TEXT', 'IMAGE', 'SYSTEM']).optional(),
+    clientMessageId: z.string().min(8).max(64).optional(),
   }),
 });
 

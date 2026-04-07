@@ -2,6 +2,7 @@ import { messageService } from '../../services/message.service.js';
 import { logger } from '../../config/logger.js';
 import { SOCKET_EVENTS, MESSAGE_STATUS } from '../../utils/constants.js';
 import prisma from '../../config/database.js';
+import { blockService } from '../../services/block.service.js';
 
 /**
  * THROTTLE: Track last typing event timestamp per user+receiver pair
@@ -10,6 +11,17 @@ import prisma from '../../config/database.js';
  */
 const typingThrottle = new Map();
 const TYPING_THROTTLE_MS = 1000; // 1 second
+
+const getBlockedSetCached = async (socket) => {
+  const now = Date.now();
+  const cache = socket.data.blockedCache;
+  if (cache && cache.expiresAt > now) {
+    return cache.set;
+  }
+  const set = await blockService.getAllBlockedUserIds(socket.userId);
+  socket.data.blockedCache = { set, expiresAt: now + 30 * 1000 };
+  return set;
+};
 
 /**
  * Setup message event handlers
@@ -22,22 +34,25 @@ export const setupMessageHandlers = (io, socket) => {
    */
   socket.on(SOCKET_EVENTS.MESSAGE_SEND, async (data, callback) => {
     try {
-      const { receiverId, content, contentType = 'TEXT' } = data; // NEW: contentType param
+      const { receiverId, content, contentType = 'TEXT', clientMessageId = null } = data; // NEW: contentType param
 
-      if (!receiverId || !content) {
+      if (!receiverId || typeof receiverId !== 'number' || !content) {
         throw new Error('Invalid message data');
       }
 
       // 1. Save message to database (status: SENT by default)
-      const message = await messageService.sendMessage(
+      const { message, isDuplicate } = await messageService.sendMessage(
         socket.userId,
         receiverId,
         content,
-        contentType // NEW: pass contentType
+        contentType, // NEW: pass contentType
+        clientMessageId
       );
 
       // 2. Emit to receiver's room (will send to all their devices)
-      io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
+      if (!isDuplicate) {
+        io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
+      }
 
       // 3. Acknowledge to sender that the message was sent successfully
       if (callback) {
@@ -63,7 +78,7 @@ export const setupMessageHandlers = (io, socket) => {
    */
   socket.on(SOCKET_EVENTS.MESSAGE_DELIVERED, async (data) => {
     try {
-      const { messageId, senderId } = data;
+      const { messageId } = data;
 
       if (!messageId) {
         throw new Error('Invalid message ID for delivery confirmation');
@@ -72,7 +87,7 @@ export const setupMessageHandlers = (io, socket) => {
       // SECURITY FIX: Verify socket user is the actual receiver
       const message = await prisma.message.findUnique({
         where: { id: messageId },
-        select: { receiverId: true, status: true },
+        select: { receiverId: true, status: true, senderId: true },
       });
 
       if (!message) {
@@ -85,17 +100,19 @@ export const setupMessageHandlers = (io, socket) => {
         return; // Silently reject - don't reveal message exists
       }
 
-      // Authorization passed - update message status in database
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          status: MESSAGE_STATUS.DELIVERED,
-          deliveredAt: new Date(),
-        },
-      });
+      // Authorization passed - update message status in database (idempotent)
+      if (message.status === MESSAGE_STATUS.SENT) {
+        await prisma.message.update({
+          where: { id: messageId },
+          data: {
+            status: MESSAGE_STATUS.DELIVERED,
+            deliveredAt: new Date(),
+          },
+        });
+      }
 
       // Notify the sender that their message was delivered
-      io.to(`user:${senderId}`).emit(SOCKET_EVENTS.MESSAGE_DELIVERED, {
+      io.to(`user:${message.senderId}`).emit(SOCKET_EVENTS.MESSAGE_DELIVERED, {
         messageId,
         deliveredAt: new Date().toISOString(),
       });
@@ -114,8 +131,14 @@ export const setupMessageHandlers = (io, socket) => {
       // `userId` here is the *other* user, whose messages I am reading
       const { userId: otherUserId } = data;
 
-      if (!otherUserId) {
+      if (!otherUserId || typeof otherUserId !== 'number') {
         throw new Error('Invalid user ID for marking messages as read');
+      }
+
+      // Block check (cached)
+      const blockedSet = await getBlockedSetCached(socket);
+      if (blockedSet.has(otherUserId)) {
+        return;
       }
 
       // Mark messages as read in the database
@@ -141,7 +164,7 @@ export const setupMessageHandlers = (io, socket) => {
    */
   socket.on(SOCKET_EVENTS.TYPING_START, (data) => {
     const { receiverId } = data;
-    if (!receiverId) return;
+    if (!receiverId || typeof receiverId !== 'number') return;
 
     // SERVER-SIDE THROTTLE: Drop excess events silently
     const key = `${socket.userId}:${receiverId}`;
@@ -154,9 +177,12 @@ export const setupMessageHandlers = (io, socket) => {
 
     typingThrottle.set(key, now);
 
-    // Emit to the receiver's room
-    io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.TYPING_START, {
-      userId: socket.userId,
+    // Block check (cached) - do not emit if blocked
+    getBlockedSetCached(socket).then((blockedSet) => {
+      if (blockedSet.has(receiverId)) return;
+      io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.TYPING_START, {
+        userId: socket.userId,
+      });
     });
   });
 
@@ -165,15 +191,29 @@ export const setupMessageHandlers = (io, socket) => {
    */
   socket.on(SOCKET_EVENTS.TYPING_STOP, (data) => {
     const { receiverId } = data;
-    if (!receiverId) return;
+    if (!receiverId || typeof receiverId !== 'number') return;
 
     // Clear throttle on stop (allows immediate next start)
     const key = `${socket.userId}:${receiverId}`;
     typingThrottle.delete(key);
 
-    // Emit to the receiver's room
-    io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.TYPING_STOP, {
-      userId: socket.userId,
+    // Block check (cached) - do not emit if blocked
+    getBlockedSetCached(socket).then((blockedSet) => {
+      if (blockedSet.has(receiverId)) return;
+      io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.TYPING_STOP, {
+        userId: socket.userId,
+      });
     });
+  });
+
+  // Cleanup on disconnect to avoid memory growth
+  socket.on('disconnect', () => {
+    const prefix = `${socket.userId}:`;
+    const suffix = `:${socket.userId}`;
+    for (const key of typingThrottle.keys()) {
+      if (key.startsWith(prefix) || key.endsWith(suffix)) {
+        typingThrottle.delete(key);
+      }
+    }
   });
 };

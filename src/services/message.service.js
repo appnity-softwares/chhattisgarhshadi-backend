@@ -6,9 +6,13 @@ import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js'
 import { logger } from '../config/logger.js';
 // ADDED: Import the blockService to check for blocks
 import { blockService } from './block.service.js';
+import { chatPolicyService } from './chatPolicy.service.js';
+import { assertValidMessageContent } from '../utils/chatValidation.js';
+import { assertPerSecondLimit, assertDailyLimit } from './chatRateLimit.service.js';
 // ADDED: Import notificationService to send push notifications
 import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
+import { enqueueMessageNotification } from './messageQueue.service.js';
 
 // Define a reusable Prisma select for public-facing user data
 // This prevents leaking sensitive fields like email, phone, etc.
@@ -39,7 +43,13 @@ const userPublicSelect = {
  * @param {string} contentType - Message content type (TEXT, IMAGE, SYSTEM)
  * @returns {Promise<Object>}
  */
-export const sendMessage = async (senderId, receiverId, content, contentType = 'TEXT') => {
+export const sendMessage = async (
+  senderId,
+  receiverId,
+  content,
+  contentType = 'TEXT',
+  clientMessageId = null
+) => {
   try {
     if (senderId === receiverId) {
       throw new ApiError(
@@ -48,12 +58,21 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
       );
     }
 
-    // --- Block Check [ADDED] ---
-    const blockedIdSet = await blockService.getAllBlockedUserIds(senderId);
-    if (blockedIdSet.has(receiverId)) {
-      throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot send messages to this user');
+    // Validate & sanitize content (privacy + length)
+    const normalizedContent = assertValidMessageContent(content);
+
+    // Anti-spam: 1 msg/sec per conversation (drop early)
+    if (!(await assertPerSecondLimit(senderId, receiverId))) {
+      throw new ApiError(HTTP_STATUS.TOO_MANY_REQUESTS, 'You are sending messages too fast');
     }
-    // --- End Block Check ---
+
+    const allowedTypes = new Set(['TEXT', 'IMAGE', 'SYSTEM']);
+    if (!allowedTypes.has(contentType)) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid content type');
+    }
+
+    // Enforce chat eligibility (match accepted OR contact approved) + block check
+    const { isMatched } = await chatPolicyService.assertCanChat(senderId, receiverId);
 
     // Check if receiver exists and is active
     const receiver = await prisma.user.findUnique({
@@ -117,6 +136,14 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
     }
     // --- End SENDER Subscription Check ---
 
+    // Daily rate limits (pre/post match)
+    if (!(await assertDailyLimit(senderId, receiverId, isMatched))) {
+      throw new ApiError(
+        HTTP_STATUS.TOO_MANY_REQUESTS,
+        'Daily message limit reached'
+      );
+    }
+
     // --- NEW: Find or create Conversation ---
     const userAId = Math.min(senderId, receiverId);
     const userBId = Math.max(senderId, receiverId);
@@ -134,13 +161,28 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
     }
     // --- End Conversation ---
 
+    // Idempotency: return existing message if clientMessageId already used
+    if (clientMessageId) {
+      const existing = await prisma.message.findFirst({
+        where: { senderId, clientMessageId },
+        include: {
+          sender: { select: userPublicSelect },
+          receiver: { select: userPublicSelect },
+        },
+      });
+      if (existing) {
+        return { message: existing, isDuplicate: true };
+      }
+    }
+
     const message = await prisma.message.create({
       data: {
         senderId,
         receiverId,
         conversationId: conversation.id,
-        content,
+        content: normalizedContent,
         contentType, // NEW: explicit content type
+        clientMessageId: clientMessageId || null,
       },
       include: {
         sender: {
@@ -167,22 +209,41 @@ export const sendMessage = async (senderId, receiverId, content, contentType = '
     }
     // --- End Usage Tracking ---
 
-    // ADDED: Send push notification to receiver
+    // Async notification via queue (cluster-safe dedupe)
     const senderName = message.sender?.profile?.firstName || 'Someone';
-    notificationService.createNotification({
-      userId: receiverId,
-      type: NOTIFICATION_TYPES.NEW_MESSAGE,
+    const preview = normalizedContent.length > 50 ? normalizedContent.substring(0, 50) + '...' : normalizedContent;
+    const queued = await enqueueMessageNotification({
+      type: 'NEW_MESSAGE',
+      messageId: message.id,
+      receiverId,
       title: `New message from ${senderName}`,
-      message: content.length > 50 ? content.substring(0, 50) + '...' : content,
+      preview,
       data: {
         type: 'NEW_MESSAGE',
         userId: String(senderId),
         userName: senderName,
+        conversationId: String(conversation.id),
       },
-    }).catch(err => logger.error('Failed to send message notification:', err));
+    });
+
+    if (!queued) {
+      notificationService.createNotification({
+        userId: receiverId,
+        type: NOTIFICATION_TYPES.NEW_MESSAGE,
+        title: `New message from ${senderName}`,
+        message: preview,
+        data: {
+          type: 'NEW_MESSAGE',
+          userId: String(senderId),
+          userName: senderName,
+          conversationId: String(conversation.id),
+        },
+        pushPolicy: 'offline-only',
+      }).catch(err => logger.error('Failed to send message notification:', err));
+    }
 
     logger.info(`Message sent from ${senderId} to ${receiverId}`);
-    return message;
+    return { message, isDuplicate: false };
   } catch (error) {
     logger.error('Error in sendMessage:', error);
     if (error instanceof ApiError) throw error;
@@ -205,6 +266,8 @@ export const getConversation = async (userId, otherUserId, query) => {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot view this conversation');
     }
     // --- End Block Check ---
+    // Enforce chat eligibility (match/contact accepted)
+    await chatPolicyService.assertCanChat(userId, otherUserId);
 
     const { page, limit, skip } = getPaginationParams(query);
 
@@ -235,9 +298,11 @@ export const getConversation = async (userId, otherUserId, query) => {
             select: userPublicSelect,
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        // Deterministic ordering for same timestamp
+        orderBy: [
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
       }),
       prisma.message.count({ where }),
     ]);
@@ -289,9 +354,34 @@ export const getAllConversations = async (userId) => {
 
     const otherUserIds = filteredPartners.map((c) => c.otherUserId);
 
+    // Filter by accepted match/contact to enforce chat eligibility
+    const matches = await prisma.matchRequest.findMany({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { senderId: userId, receiverId: { in: otherUserIds } },
+          { receiverId: userId, senderId: { in: otherUserIds } },
+        ],
+      },
+      select: { senderId: true, receiverId: true },
+    });
+
+    const allowedSet = new Set();
+    for (const m of matches) {
+      const otherId = m.senderId === userId ? m.receiverId : m.senderId;
+      allowedSet.add(otherId);
+    }
+    const eligiblePartners = filteredPartners.filter((c) => allowedSet.has(c.otherUserId));
+
+    if (eligiblePartners.length === 0) {
+      return [];
+    }
+
+    const eligibleUserIds = eligiblePartners.map((c) => c.otherUserId);
+
     // Step 2: Get all user details for these partners in one query
     const users = await prisma.user.findMany({
-      where: { id: { in: otherUserIds } },
+      where: { id: { in: eligibleUserIds } },
       select: userPublicSelect,
     });
     const userMap = new Map(users.map((user) => [user.id, user]));
@@ -306,8 +396,8 @@ export const getAllConversations = async (userId) => {
           GREATEST("senderId", "receiverId") as u2,
           MAX("createdAt") as "maxCreatedAt"
         FROM "messages"
-        WHERE ("senderId" = ${userId} AND "receiverId" IN (${Prisma.join(otherUserIds)}))
-           OR ("receiverId" = ${userId} AND "senderId" IN (${Prisma.join(otherUserIds)}))
+        WHERE ("senderId" = ${userId} AND "receiverId" IN (${Prisma.join(eligibleUserIds)}))
+           OR ("receiverId" = ${userId} AND "senderId" IN (${Prisma.join(eligibleUserIds)}))
         GROUP BY u1, u2
       ) lm ON LEAST(m."senderId", m."receiverId") = lm.u1
            AND GREATEST(m."senderId", m."receiverId") = lm.u2
@@ -325,7 +415,7 @@ export const getAllConversations = async (userId) => {
       by: ['senderId'],
       where: {
         receiverId: userId,
-        senderId: { in: otherUserIds },
+        senderId: { in: eligibleUserIds },
         status: { in: ['SENT', 'DELIVERED'] }, // All non-READ statuses
         isDeletedByReceiver: false,
       },
@@ -338,7 +428,7 @@ export const getAllConversations = async (userId) => {
     );
 
     // Step 5: Combine all the data
-    const conversationsWithDetails = filteredPartners.map((conv) => { // [MODIFIED]
+    const conversationsWithDetails = eligiblePartners.map((conv) => { // [MODIFIED]
       const otherUser = userMap.get(conv.otherUserId);
       const lastMessage = lastMessageMap.get(conv.otherUserId);
       const unreadCount = unreadCountMap.get(conv.otherUserId) || 0;
@@ -373,6 +463,7 @@ export const markMessagesAsRead = async (userId, otherUserId) => {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'Cannot interact with this user');
     }
     // --- End Block Check ---
+    await chatPolicyService.assertCanChat(userId, otherUserId);
 
     // NEW: Use status field (single source of truth) instead of isRead
     const result = await prisma.message.updateMany({
@@ -441,6 +532,30 @@ export const deleteMessage = async (messageId, userId) => {
 };
 
 /**
+ * Delete entire conversation for a user (per-user soft delete)
+ * @param {number} userId - Current user ID
+ * @param {number} otherUserId - Other user ID
+ */
+export const deleteConversation = async (userId, otherUserId) => {
+  try {
+    await prisma.message.updateMany({
+      where: { senderId: userId, receiverId: otherUserId },
+      data: { isDeletedBySender: true },
+    });
+    await prisma.message.updateMany({
+      where: { senderId: otherUserId, receiverId: userId },
+      data: { isDeletedByReceiver: true },
+    });
+
+    logger.info(`Conversation between ${userId} and ${otherUserId} marked deleted for user ${userId}`);
+  } catch (error) {
+    logger.error('Error in deleteConversation:', error);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error deleting conversation');
+  }
+};
+
+/**
  * Get unread message count
  * @param {number} userId - User ID
  * @returns {Promise<number>}
@@ -468,11 +583,42 @@ export const getUnreadCount = async (userId) => {
   }
 };
 
+/**
+ * Get undelivered messages for a user (SENT only)
+ * Used on socket reconnect to recover missed messages
+ */
+export const getUndeliveredMessages = async (userId, limit = 200) => {
+  try {
+    const messages = await prisma.message.findMany({
+      where: {
+        receiverId: userId,
+        status: 'SENT',
+        isDeletedByReceiver: false,
+      },
+      include: {
+        sender: { select: userPublicSelect },
+      },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+      take: limit,
+    });
+
+    return messages;
+  } catch (error) {
+    logger.error('Error in getUndeliveredMessages:', error);
+    return [];
+  }
+};
+
 export const messageService = {
   sendMessage,
   getConversation,
   getAllConversations,
   markMessagesAsRead,
   deleteMessage,
+  deleteConversation,
   getUnreadCount,
+  getUndeliveredMessages,
 };
