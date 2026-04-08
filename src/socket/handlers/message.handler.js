@@ -206,12 +206,11 @@ export const setupMessageHandlers = (io, socket) => {
     });
   });
 
-  // Cleanup on disconnect to avoid memory growth
+  // Cleanup logic - simplified and optimized
   socket.on('disconnect', () => {
-    const prefix = `${socket.userId}:`;
-    const suffix = `:${socket.userId}`;
-    for (const key of typingThrottle.keys()) {
-      if (key.startsWith(prefix) || key.endsWith(suffix)) {
+    // Clear all throttles where this user is the sender
+    for (const [key] of typingThrottle) {
+      if (key.startsWith(`${socket.userId}:`)) {
         typingThrottle.delete(key);
       }
     }
