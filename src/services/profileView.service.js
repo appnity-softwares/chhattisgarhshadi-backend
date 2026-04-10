@@ -30,7 +30,15 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
   }
 
   try {
-    // --- Check User Subscription Status ---
+    // 0. Verify viewed user exists
+    const targetUser = await prisma.user.findUnique({
+      where: { id: profileId, isActive: true },
+    });
+    if (!targetUser) {
+      return { message: 'Profile not found' };
+    }
+
+    // 1. Check User Subscription Status
     const viewer = await prisma.user.findUnique({
       where: { id: viewerId },
       include: {
