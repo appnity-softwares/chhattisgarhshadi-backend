@@ -14,8 +14,7 @@ export const hasPremiumAccess = (user) => {
     if (!user) return false;
 
     // 1. Check if user has an explicitly granted premium role (for lifetime access or admins)
-    // If marketing adds "VIP_USER" in the future, just add it to this array.
-    const premiumRoles = ['PREMIUM_USER', 'BASIC_USER', 'ADMIN', 'SUPER_ADMIN'];
+    const premiumRoles = [USER_ROLES.PREMIUM_USER, USER_ROLES.BASIC_USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN];
     if (premiumRoles.includes(user.role)) {
         return true;
     }
