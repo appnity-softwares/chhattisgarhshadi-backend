@@ -25,6 +25,7 @@ import promoCodeRoutes from './promoCode.routes.js';
 import adminNotificationRoutes from './admin.notification.routes.js';
 import adminThemeRoutes from './admin.theme.routes.js';
 import adminSuccessStoryRoutes from './admin.successStory.routes.js';
+import verificationRoutes from './verification.routes.js'; // Added to enable verification queue
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // ADDED: Memory storage for Excel
@@ -146,5 +147,6 @@ router.use('/promo-codes', promoCodeRoutes);
 router.use('/notifications', adminNotificationRoutes);
 router.use('/theme', adminThemeRoutes);
 router.use('/success-stories', adminSuccessStoryRoutes);
+router.use('/verifications', verificationRoutes); // Added to enable verification queue
 
 export default router;
