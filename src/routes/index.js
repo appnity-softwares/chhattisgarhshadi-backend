@@ -130,6 +130,10 @@ router.use('/recommendations', recommendationsRoutes);
 import locationRoutes from './location.routes.js';
 router.use('/location', locationRoutes);
 
+// Public Stats (Public)
+import { getPublicStats } from '../controllers/public.controller.js';
+router.get('/public/stats', getPublicStats);
+
 // FAQ routes (public + admin CRUD)
 import faqRoutes from './faq.routes.js';
 router.use('/faq', faqRoutes);

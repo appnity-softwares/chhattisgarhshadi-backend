@@ -140,7 +140,7 @@ export const getProfileCompletionForUser = async (userId) => {
     const profile = await prisma.profile.findUnique({
         where: { userId },
         include: {
-            photos: true,
+            media: true,
         },
     });
 
@@ -151,7 +151,7 @@ export const getProfileCompletionForUser = async (userId) => {
     // Add photos array to profile object
     const profileWithPhotos = {
         ...profile,
-        photos: profile.photos || [],
+        photos: profile.media || [],
     };
 
     return calculateProfileCompletion(profileWithPhotos);
