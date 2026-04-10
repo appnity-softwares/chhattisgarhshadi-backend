@@ -21,14 +21,14 @@ router.post('/', validate(sendMatchRequestSchema), matchController.sendMatchRequ
 router.get(
   '/sent',
   validate(getMatchesQuerySchema),
-  cacheMiddleware({ prefix: 'matches:sent:', ttl: 600, keyGenerator: (req) => `matches:sent:${req.user?.id}:${req.query.page || 1}` }),
+  cacheMiddleware({ prefix: 'matches:sent:', ttl: 600, keyGenerator: (req) => `matches:sent:${req.user?.id}:${req.query.status || 'all'}:${req.query.page || 1}` }),
   matchController.getSentMatchRequests
 );
 
 router.get(
   '/received',
   validate(getMatchesQuerySchema),
-  cacheMiddleware({ prefix: 'matches:received:', ttl: 600, keyGenerator: (req) => `matches:received:${req.user?.id}:${req.query.page || 1}` }),
+  cacheMiddleware({ prefix: 'matches:received:', ttl: 600, keyGenerator: (req) => `matches:received:${req.user?.id}:${req.query.status || 'all'}:${req.query.page || 1}` }),
   matchController.getReceivedMatchRequests
 );
 

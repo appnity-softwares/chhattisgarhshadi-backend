@@ -10,6 +10,7 @@ import { notificationService } from './notification.service.js';
 // ADDED: Import socket for real-time match updates
 import { getSocketIoInstance } from '../socket/index.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
+import { cacheService } from './cache.service.js';
 
 // Reusable Prisma select for public-facing user data
 // Prevents leaking sensitive fields like email, phone, etc.
@@ -191,6 +192,10 @@ export const sendMatchRequest = async (fromUserId, receiverId, message) => {
     } else if (activeSubscription && activeSubscription.plan.maxInterestsSend !== 0) {
       remaining = activeSubscription.plan.maxInterestsSend - (activeSubscription.interestsUsed + 1);
     }
+    // --- Invalidate Cache [ADDED] ---
+    cacheService.invalidateUserCache(fromUserId).catch(err => logger.error('Cache invalidation error (sender):', err));
+    cacheService.invalidateUserCache(receiverId).catch(err => logger.error('Cache invalidation error (receiver):', err));
+
     return { ...match, requestsRemaining: remaining };
   } catch (error) {
     logger.error('Error in sendMatchRequest:', error);
@@ -277,6 +282,11 @@ export const acceptMatchRequest = async (matchId, userId) => {
     }
 
     logger.info(`Match request accepted: ${matchId}`);
+    
+    // --- Invalidate Cache [ADDED] ---
+    cacheService.invalidateUserCache(match.senderId).catch(err => logger.error('Cache invalidation error (original sender):', err));
+    cacheService.invalidateUserCache(userId).catch(err => logger.error('Cache invalidation error (accepter):', err));
+
     return updatedMatch;
   } catch (error) {
     logger.error('Error in acceptMatchRequest:', error);
@@ -321,6 +331,11 @@ export const rejectMatchRequest = async (matchId, userId) => {
     });
 
     logger.info(`Match request rejected: ${matchId}`);
+
+    // --- Invalidate Cache [ADDED] ---
+    cacheService.invalidateUserCache(match.senderId).catch(err => logger.error('Cache invalidation error (original sender):', err));
+    cacheService.invalidateUserCache(userId).catch(err => logger.error('Cache invalidation error (rejecter):', err));
+    
     return updatedMatch;
   } catch (error) {
     logger.error('Error in rejectMatchRequest:', error);
@@ -529,6 +544,10 @@ export const deleteMatch = async (matchId, userId) => {
     });
 
     logger.info(`Match deleted: ${matchId}`);
+
+    // --- Invalidate Cache [ADDED] ---
+    cacheService.invalidateUserCache(match.senderId).catch(err => logger.error('Cache invalidation error (sender):', err));
+    cacheService.invalidateUserCache(match.receiverId).catch(err => logger.error('Cache invalidation error (receiver):', err));
   } catch (error) {
     logger.error('Error in deleteMatch:', error);
     if (error instanceof ApiError) throw error;
