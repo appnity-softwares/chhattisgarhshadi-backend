@@ -72,6 +72,8 @@ const allowedOrigins = env.CORS_ORIGIN ? env.CORS_ORIGIN.split(',').map(o => o.t
 if (process.env.NODE_ENV !== 'production') {
   if (!allowedOrigins.includes('http://localhost:3000')) allowedOrigins.push('http://localhost:3000');
   if (!allowedOrigins.includes('http://localhost:3001')) allowedOrigins.push('http://localhost:3001');
+  if (!allowedOrigins.includes('http://localhost:5173')) allowedOrigins.push('http://localhost:5173');
+  if (!allowedOrigins.includes('http://localhost:5174')) allowedOrigins.push('http://localhost:5174');
 }
 // Add production admin domain if not present
 if (!allowedOrigins.includes('https://admin.chhattisgarhshadi.com')) {

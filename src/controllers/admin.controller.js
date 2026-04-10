@@ -18,17 +18,19 @@ export const adminLogin = asyncHandler(async (req, res) => {
   const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'Admin@123';
 
   if (username === ADMIN_USER && password === ADMIN_PASS) {
-    // Generate a special admin token
-    // We use a specific ID range or special identifier for hardcoded admin
-    const token = jwtUtils.generateAccessToken({
-      id: 0, // 0 for super admin
+    const adminUser = {
+      id: 0, // Hardcoded super admin ID
       role: 'ADMIN',
       email: ADMIN_USER
-    });
+    };
+
+    const accessToken = jwtUtils.generateAccessToken(adminUser);
+    const refreshToken = jwtUtils.generateRefreshToken(adminUser);
 
     return res.status(HTTP_STATUS.OK).json(
       new ApiResponse(HTTP_STATUS.OK, {
-        token,
+        token: accessToken,
+        refreshToken,
         user: { email: ADMIN_USER, role: 'ADMIN' }
       }, 'Admin login successful')
     );
