@@ -201,7 +201,10 @@ export const sendMessage = async (
     });
 
     // --- Increment message usage for subscription users ---
-    if (activeSubscription && !senderIsPremiumRole) {
+    // We only skip incrementing if the user HAS a Lifetime Premium Role (PREMIUM_USER, ADMIN, etc.)
+    // and NOT just a temporary subscription.
+    const hasLifetimePremium = sender.role === 'PREMIUM_USER' || sender.role === 'ADMIN';
+    if (activeSubscription && !hasLifetimePremium) {
       await prisma.userSubscription.update({
         where: { id: activeSubscription.id },
         data: { messagesUsed: { increment: 1 } },
@@ -247,7 +250,12 @@ export const sendMessage = async (
   } catch (error) {
     logger.error('Error in sendMessage:', error);
     if (error instanceof ApiError) throw error;
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error sending message');
+    
+    // Improved error reporting: include original error message in dev/logs
+    throw new ApiError(
+      HTTP_STATUS.INTERNAL_SERVER_ERROR, 
+      process.env.NODE_ENV === 'production' ? 'Error sending message' : `Error sending message: ${error.message}`
+    );
   }
 };
 

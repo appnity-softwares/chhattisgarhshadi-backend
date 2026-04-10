@@ -1,3 +1,4 @@
+import { USER_ROLES } from './constants.js';
 /**
  * Helper to determine user's premium status and feature limits
  * based on their active subscription, abstracting away hardcoded roles.
