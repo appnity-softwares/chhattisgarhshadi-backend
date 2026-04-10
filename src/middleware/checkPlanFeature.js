@@ -35,6 +35,9 @@ export const requirePlanFeature = (featureName) => {
                     status: 'ACTIVE',
                     endDate: { gt: new Date() },
                 },
+                orderBy: {
+                    endDate: 'desc',
+                },
                 include: {
                     plan: true,
                 },
@@ -106,6 +109,9 @@ export const checkPlanLimit = (limitType) => {
                     userId: req.user.id,
                     status: 'ACTIVE',
                     endDate: { gt: new Date() },
+                },
+                orderBy: {
+                    endDate: 'desc',
                 },
                 include: {
                     plan: true,
@@ -196,6 +202,9 @@ export const getUserSubscriptionDetails = async (userId) => {
             userId,
             status: 'ACTIVE',
             endDate: { gt: new Date() },
+        },
+        orderBy: {
+            endDate: 'desc',
         },
         include: {
             plan: true,

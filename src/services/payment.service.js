@@ -456,7 +456,7 @@ const handlePaymentCaptured = async (paymentEntity) => {
     }
 
     // CRITICAL FIX: Update all related models in a transaction
-    await prisma.$transaction([
+    const updateOps = [
       // 1. Update Payment
       prisma.payment.update({
         where: { id: payment.id },
@@ -481,7 +481,27 @@ const handlePaymentCaptured = async (paymentEntity) => {
           role: payment.subscription.plan.roleToAssign,
         },
       }),
-    ]);
+    ];
+
+    // 4. Handle Superceded Subscription (Upgrade/Renewal)
+    if (payment.subscription.metadata) {
+      try {
+        const metadata = JSON.parse(payment.subscription.metadata);
+        if (metadata.previousSubscriptionId) {
+          updateOps.push(
+            prisma.userSubscription.update({
+              where: { id: metadata.previousSubscriptionId },
+              data: { status: SUBSCRIPTION_STATUS.EXPIRED },
+            })
+          );
+          logger.info(`Deactivating superceded subscription: ${metadata.previousSubscriptionId}`);
+        }
+      } catch (e) {
+        logger.error('Failed to parse subscription metadata for cleanup:', e.message);
+      }
+    }
+
+    await prisma.$transaction(updateOps);
 
     // 4. (Optional but recommended) Emit socket event to user
     const io = getSocketIoInstance();
