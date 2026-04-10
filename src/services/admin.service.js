@@ -413,6 +413,73 @@ const updateProfileStatus = async (profileId, isPublished, statusReason) => {
   }
 };
 
+/**
+ * [NEW] Grant free premium subscription to a user
+ * @param {number} userId - The user ID
+ * @param {number} planId - The plan ID
+ * @param {number|null} customDays - Optional override for duration
+ * @returns {Promise<Object>}
+ */
+const grantPremiumSubscription = async (userId, planId, customDays = null) => {
+  try {
+    const userBuffer = await prisma.user.findUnique({ where: { id: userId } });
+    if (!userBuffer) throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found');
+
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+    if (!plan) throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Plan not found');
+
+    // 1. Calculate duration
+    const duration = customDays || plan.duration;
+    
+    // 2. Resolve final end date (Extend if already active)
+    const currentSub = await prisma.userSubscription.findFirst({
+        where: { userId, status: 'ACTIVE', endDate: { gt: new Date() } },
+        orderBy: { endDate: 'desc' }
+    });
+
+    let startDate = new Date();
+    let endDate = new Date();
+
+    if (currentSub) {
+        // Extend from existing expiration
+        endDate = new Date(currentSub.endDate);
+        endDate.setDate(endDate.getDate() + duration);
+        // Mark old sub as superceded
+        await prisma.userSubscription.update({
+            where: { id: currentSub.id },
+            data: { status: 'EXPIRED' }
+        });
+    } else {
+        endDate.setDate(endDate.getDate() + duration);
+    }
+
+    // 3. Create Subscription Record
+    const newSubscription = await prisma.userSubscription.create({
+      data: {
+        userId,
+        planId,
+        status: 'ACTIVE',
+        startDate,
+        endDate,
+        metadata: JSON.stringify({ grantedBy: 'ADMIN', originalDuration: plan.duration, customDays })
+      },
+    });
+
+    // 4. Update User Role
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: plan.roleToAssign || 'PREMIUM_USER' }
+    });
+
+    logger.info(`Admin granted ${plan.name} to user ${userId} for ${duration} days`);
+    return newSubscription;
+  } catch (error) {
+    logger.error('Error in grantPremiumSubscription:', error);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Failed to grant subscription');
+  }
+};
+
 export const adminService = {
   getDashboardStats,
   cleanupExpiredTokens,
@@ -426,4 +493,5 @@ export const adminService = {
   updatePlan, // ADDED
   verifyProfile, // ADDED
   updateProfileStatus, // ADDED
+  grantPremiumSubscription, // NEW
 };

@@ -287,6 +287,27 @@ export const updateProfileStatus = asyncHandler(async (req, res) => {
 });
 
 
+/**
+ * [NEW] Grant premium subscription to user (Admin)
+ */
+export const grantSubscription = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { planId, customDays } = req.body;
+
+  const subscription = await adminService.grantPremiumSubscription(
+    parseInt(userId),
+    parseInt(planId),
+    customDays ? parseInt(customDays) : null
+  );
+
+  await logAdminAction(req, 'SUBSCRIPTION_GRANTED_FREE', `Granted free subscription to user ${userId}`, { userId, planId, customDays });
+
+  res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, subscription, 'Premium subscription granted successfully')
+  );
+});
+
+
 export const adminController = {
   adminLogin,
   getAllUsers,
@@ -308,4 +329,5 @@ export const adminController = {
   unbanUser,
   verifyProfile, // ADDED
   updateProfileStatus, // ADDED
+  grantSubscription, // NEW
 };

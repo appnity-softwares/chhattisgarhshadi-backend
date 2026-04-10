@@ -79,6 +79,11 @@ router.post(
   validate(userIdParamSchema),
   adminController.unbanUser
 );
+router.post(
+  '/users/:userId/grant-subscription',
+  validate(userIdParamSchema),
+  adminController.grantSubscription
+);
 
 // --- Profile Management ---
 router.get(
