@@ -11,11 +11,11 @@ export const getPublicStats = asyncHandler(async (req, res) => {
   const [totalUsers, activeProfiles, totalMatches] = await Promise.all([
     prisma.user.count(),
     prisma.profile.count({ where: { isPublished: true } }),
-    prisma.match.count()
+    prisma.matchRequest.count()
   ]);
 
   // For successful matches, we'll use a realistic multiplier or count accepted matches
-  const successfulMatches = await prisma.match.count({
+  const successfulMatches = await prisma.matchRequest.count({
     where: { status: 'ACCEPTED' }
   });
 
