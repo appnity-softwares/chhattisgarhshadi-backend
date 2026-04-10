@@ -63,7 +63,7 @@ export const initializeSocket = (httpServer, config) => {
       socket.userId = decoded.id; // Use decoded.id
       socket.userEmail = decoded.email;
 
-      if (!socket.userId) {
+      if (socket.userId === undefined || socket.userId === null) {
         return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid token payload'));
       }
 
