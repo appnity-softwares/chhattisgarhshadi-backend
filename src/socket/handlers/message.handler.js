@@ -66,7 +66,9 @@ export const setupMessageHandlers = (io, socket) => {
       if (callback) {
         callback({
           success: false,
-          message: error.message || 'Failed to send message',
+          message: 'Error sending message',
+          error: error.message || 'Failed to send message',
+          statusCode: error.statusCode || 500
         });
       }
     }
