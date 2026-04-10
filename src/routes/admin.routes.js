@@ -91,6 +91,9 @@ router.get(
   validate(paginationQuerySchema),
   adminController.getAllProfiles
 );
+router.post('/users/:userId/profile', adminController.adminCreateProfile);
+router.put('/users/:userId/profile', adminController.adminUpdateProfile);
+router.delete('/users/:userId/profile', adminController.adminDeleteProfile);
 router.put('/profiles/:profileId/verify', adminController.verifyProfile);
 router.put('/profiles/:profileId/status', adminController.updateProfileStatus);
 

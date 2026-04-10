@@ -307,6 +307,36 @@ export const grantSubscription = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * [NEW] Admin: Create profile for a user
+ */
+export const adminCreateProfile = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const profile = await profileService.createProfile(parseInt(userId), req.body);
+  await logAdminAction(req, 'PROFILE_CREATED', `Created profile for user ${userId}`, { userId });
+  res.status(HTTP_STATUS.CREATED).json(new ApiResponse(HTTP_STATUS.CREATED, profile, 'Profile created successfully by Admin'));
+});
+
+/**
+ * [NEW] Admin: Update any user profile
+ */
+export const adminUpdateProfile = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const profile = await profileService.updateProfile(parseInt(userId), req.body);
+  await logAdminAction(req, 'PROFILE_UPDATED', `Updated profile for user ${userId}`, { userId, update: req.body });
+  res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, profile, 'Profile updated successfully by Admin'));
+});
+
+/**
+ * [NEW] Admin: Delete any user profile
+ */
+export const adminDeleteProfile = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  await profileService.deleteProfile(parseInt(userId));
+  await logAdminAction(req, 'PROFILE_DELETED', `Deleted profile for user ${userId}`, { userId });
+  res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, null, 'Profile deleted successfully by Admin'));
+});
+
 
 export const adminController = {
   adminLogin,
@@ -314,7 +344,7 @@ export const adminController = {
   getUserById,
   updateUserRole,
   deleteUser,
-  getAllProfiles, // ADDED
+  getAllProfiles,
   getDashboardStats,
   cleanupExpiredTokens,
   getRecentUsers,
@@ -324,10 +354,13 @@ export const adminController = {
   updateReport,
   getPlans,
   updatePlanDiscount,
-  updatePlan, // ADDED
+  updatePlan,
   banUser,
   unbanUser,
-  verifyProfile, // ADDED
-  updateProfileStatus, // ADDED
-  grantSubscription, // NEW
+  verifyProfile,
+  updateProfileStatus,
+  grantSubscription,
+  adminCreateProfile,
+  adminUpdateProfile,
+  adminDeleteProfile,
 };
