@@ -467,20 +467,57 @@ const handlePaymentCaptured = async (paymentEntity) => {
           paymentMethod: paymentEntity.method,
         },
       }),
-      // 2. Activate Subscription
-      prisma.userSubscription.update({
-        where: { id: payment.subscriptionId },
-        data: {
-          status: SUBSCRIPTION_STATUS.ACTIVE,
-        },
-      }),
-      // 3. Upgrade User Role
-      prisma.user.update({
-        where: { id: payment.userId },
-        data: {
-          role: payment.subscription.plan.roleToAssign,
-        },
-      }),
+    // 2. Check for existing active subscription to determine if we activate or queue
+    const activeSub = await prisma.userSubscription.findFirst({
+      where: { 
+        userId: payment.userId, 
+        status: SUBSCRIPTION_STATUS.ACTIVE, 
+        endDate: { gt: new Date() } 
+      }
+    });
+
+    const isQueued = !!activeSub;
+
+    // 2. Activate or Queue Subscription
+    if (isQueued) {
+      // Calculate sequential dates
+      const newStartDate = new Date(activeSub.endDate);
+      const newEndDate = new Date(newStartDate);
+      newEndDate.setDate(newEndDate.getDate() + payment.subscription.plan.duration);
+
+      updateOps.push(
+        prisma.userSubscription.update({
+          where: { id: payment.subscriptionId },
+          data: {
+            status: SUBSCRIPTION_STATUS.QUEUED,
+            startDate: newStartDate,
+            endDate: newEndDate
+          },
+        })
+      );
+      logger.info(`Subscription ${payment.subscriptionId} queued for user ${payment.userId} (starts after ${activeSub.id})`);
+    } else {
+      updateOps.push(
+        prisma.userSubscription.update({
+          where: { id: payment.subscriptionId },
+          data: {
+            status: SUBSCRIPTION_STATUS.ACTIVE,
+          },
+        })
+      );
+
+      // 3. Upgrade User Role (only if activating immediately)
+      if (payment.subscription.plan.roleToAssign) {
+        updateOps.push(
+          prisma.user.update({
+            where: { id: payment.userId },
+            data: {
+              role: payment.subscription.plan.roleToAssign,
+            },
+          })
+        );
+      }
+    }
     ];
 
     // 4. Handle Superceded Subscription (Upgrade/Renewal)
@@ -512,14 +549,17 @@ const handlePaymentCaptured = async (paymentEntity) => {
       });
     }
 
-    // 5. ADDED: Send push notification for subscription activation
+    // 5. ADDED: Send push notification for subscription activation/queueing
     notificationService.createNotification({
       userId: payment.userId,
       type: NOTIFICATION_TYPES.SUBSCRIPTION_ACTIVATED,
-      title: 'Welcome to Premium! 🎉',
-      message: 'Your subscription is now active. Enjoy unlimited messaging, contact viewing, and more!',
+      title: isQueued ? 'Plan Queued! 📥' : 'Welcome to Premium! 🎉',
+      message: isQueued 
+        ? `Your new ${payment.subscription.plan.name} plan is queued and will activate automatically on ${payment.subscription.endDate.toLocaleDateString()}.`
+        : 'Your subscription is now active. Enjoy unlimited messaging, contact viewing, and more!',
       data: {
         type: 'SUBSCRIPTION_ACTIVATED',
+        status: isQueued ? 'QUEUED' : 'ACTIVE',
         planId: String(payment.subscription.planId),
         endDate: payment.subscription.endDate.toISOString(),
       },

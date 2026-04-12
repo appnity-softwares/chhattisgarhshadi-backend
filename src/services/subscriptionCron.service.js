@@ -127,34 +127,74 @@ export const handleExpiredSubscriptions = async () => {
                     data: { status: SUBSCRIPTION_STATUS.EXPIRED },
                 });
 
-                // 2. Prevent aggressive downgrade: Check if they have another active plan
-                const otherActiveSub = await prisma.userSubscription.findFirst({
+                // 2. Activation Logic for QUEUED plans
+                const queuedSub = await prisma.userSubscription.findFirst({
                     where: {
                         userId: subscription.userId,
-                        id: { not: subscription.id },
-                        status: SUBSCRIPTION_STATUS.ACTIVE,
-                        endDate: { gt: new Date() },
+                        status: SUBSCRIPTION_STATUS.QUEUED,
                     },
+                    orderBy: { startDate: 'asc' },
+                    include: { plan: true }
                 });
 
-                if (!otherActiveSub) {
-                    await prisma.user.update({
-                        where: { id: subscription.userId },
-                        data: { role: USER_ROLES.USER },
+                if (queuedSub) {
+                    // Activate the queued plan
+                    await prisma.$transaction([
+                        prisma.userSubscription.update({
+                            where: { id: queuedSub.id },
+                            data: { 
+                                status: SUBSCRIPTION_STATUS.ACTIVE,
+                                startDate: new Date(), // Reset start date to NOW
+                                endDate: new Date(new Date().getTime() + (queuedSub.plan.duration * 24 * 60 * 60 * 1000))
+                            },
+                        }),
+                        // Ensure user role is correct
+                        prisma.user.update({
+                            where: { id: subscription.userId },
+                            data: { role: queuedSub.plan.roleToAssign || USER_ROLES.PREMIUM_USER }
+                        })
+                    ]);
+                    
+                    logger.info(`Activated queued subscription ${queuedSub.id} for user ${subscription.userId}`);
+                    
+                    // Notify user
+                    await notificationService.createNotification({
+                        userId: subscription.userId,
+                        type: NOTIFICATION_TYPES.SUBSCRIPTION_ACTIVATED,
+                        title: 'New Plan Activated! 🚀',
+                        message: `Your queued ${queuedSub.plan.name} plan is now active. Enjoy your benefits!`,
+                        data: { type: 'SUBSCRIPTION_ACTIVATED', subscriptionId: String(queuedSub.id) },
+                    });
+                } else {
+                    // 3. Downgrade Logic (if no active or queued plans left)
+                    const otherActiveSub = await prisma.userSubscription.findFirst({
+                        where: {
+                            userId: subscription.userId,
+                            id: { not: subscription.id },
+                            status: SUBSCRIPTION_STATUS.ACTIVE,
+                            endDate: { gt: new Date() },
+                        },
+                    });
+
+                    if (!otherActiveSub) {
+                        await prisma.user.update({
+                            where: { id: subscription.userId },
+                            data: { role: USER_ROLES.USER },
+                        });
+                    }
+
+                    // Send expiration notification
+                    await notificationService.createNotification({
+                        userId: subscription.userId,
+                        type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
+                        title: 'Subscription Expired 😢',
+                        message: 'Your premium subscription has expired. Renew now to restore your premium features!',
+                        data: {
+                            type: 'SUBSCRIPTION_EXPIRED',
+                            subscriptionId: String(subscription.id),
+                        },
                     });
                 }
-
-                // 3. Send expiration notification
-                await notificationService.createNotification({
-                    userId: subscription.userId,
-                    type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
-                    title: 'Subscription Expired 😢',
-                    message: 'Your premium subscription has expired. Renew now to restore your premium features!',
-                    data: {
-                        type: 'SUBSCRIPTION_EXPIRED',
-                        subscriptionId: String(subscription.id),
-                    },
-                });
 
                 processedCount++;
             } catch (err) {
