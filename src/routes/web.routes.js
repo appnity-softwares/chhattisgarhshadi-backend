@@ -85,7 +85,7 @@ router.post('/payment/create-link', authenticateWebUser, async (req, res) => {
  */
 router.post('/payment/initiate-session', authenticateWebUser, async (req, res) => {
     try {
-        const { planId } = req.body;
+        const { planId, promoCode } = req.body;
         const userId = req.user.id; // From authenticateWebUser middleware
 
         if (!planId) {
@@ -96,7 +96,7 @@ router.post('/payment/initiate-session', authenticateWebUser, async (req, res) =
         }
 
         // Create the Razorpay order
-        const order = await paymentService.createOrder(userId, planId);
+        const order = await paymentService.createOrder(userId, planId, promoCode);
 
         // Get plan details
         const plan = await prisma.subscriptionPlan.findFirst({
