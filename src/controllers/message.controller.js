@@ -57,6 +57,18 @@ export const getConversation = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Get server-owned chat eligibility for a user pair
+ */
+export const getChatEligibility = asyncHandler(async (req, res) => {
+  const otherUserId = parseInt(req.params.userId, 10);
+  const eligibility = await messageService.getChatEligibility(req.user.id, otherUserId);
+
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, eligibility, 'Chat eligibility retrieved successfully'));
+});
+
+/**
  * Get all conversations
  */
 export const getAllConversations = asyncHandler(async (req, res) => {
@@ -135,6 +147,7 @@ export const getUnreadCount = asyncHandler(async (req, res) => {
 
 export const messageController = {
   sendMessage,
+  getChatEligibility,
   getConversation,
   getAllConversations,
   markMessagesAsRead,

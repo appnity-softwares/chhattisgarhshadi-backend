@@ -29,6 +29,7 @@ router.delete('/me/fcm-token/:token', userController.deleteFcmToken);
 
 
 router.get('/search', validate(searchUsersSchema), userController.searchUsers);
+router.get('/access', userController.getUserAccess);
 
 
 router.get('/:id', validate(objectIdSchema), userController.getUserById);

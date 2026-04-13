@@ -68,16 +68,18 @@ export const getApprovedStories = async (query) => {
                     user1: {
                         select: {
                             id: true,
+                            profilePicture: true,
                             profile: {
-                                select: { firstName: true, lastName: true, profilePicture: true }
+                                select: { firstName: true, lastName: true }
                             }
                         }
                     },
                     user2: {
                         select: {
                             id: true,
+                            profilePicture: true,
                             profile: {
-                                select: { firstName: true, lastName: true, profilePicture: true }
+                                select: { firstName: true, lastName: true }
                             }
                         }
                     }

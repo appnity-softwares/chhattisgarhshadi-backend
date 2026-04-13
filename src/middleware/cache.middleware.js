@@ -83,7 +83,7 @@ export const cacheMiddleware = (options = {}) => {
 export const cachePlans = cacheMiddleware({
     prefix: 'plans:',
     ttl: 3600,
-    keyGenerator: (req) => 'plans:all',
+    keyGenerator: (_req) => 'plans:all',
 });
 
 // Cache profile data for 5 minutes

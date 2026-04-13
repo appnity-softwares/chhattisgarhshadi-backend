@@ -4,7 +4,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+
 
 const prisma = new PrismaClient();
 
@@ -14,10 +14,10 @@ const cities = [
     'Rajnandgaon', 'Raigarh', 'Jagdalpur', 'Ambikapur', 'Dhamtari'
 ];
 
-const states = ['Chhattisgarh'];
+
 const religions = ['HINDU', 'HINDU', 'HINDU', 'HINDU', 'HINDU', 'MUSLIM', 'CHRISTIAN', 'JAIN', 'SIKH', 'BUDDHIST'];
 const castes = ['BRAHMIN', 'KSHATRIYA', 'VAISH', 'KAYASTH', 'AGRAWAL', 'RAJPUT', 'MARWARI', 'SINDHI'];
-const educations = ['BACHELORS', 'MASTERS', 'DOCTORATE', 'DIPLOMA', '12TH'];
+
 const occupations = ['Software Engineer', 'Doctor', 'Teacher', 'Business Owner', 'Government Employee', 'Bank Manager', 'Lawyer', 'CA', 'Engineer', 'Professor'];
 const diets = ['VEGETARIAN', 'NON_VEGETARIAN', 'EGGETARIAN', 'VEGAN'];
 const maritalStatuses = ['NEVER_MARRIED', 'NEVER_MARRIED', 'NEVER_MARRIED', 'DIVORCED', 'WIDOWED'];

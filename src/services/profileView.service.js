@@ -24,6 +24,8 @@ const userPublicSelect = {
  * @returns {Promise<Object>} The new or existing profile view entry
  */
 export const logProfileView = async (viewerId, profileId, isAnonymous = false) => {
+  const FREE_DAILY_VIEW_LIMIT = 10;
+
   if (viewerId === profileId) {
     // Don't log self-views
     return { message: 'Cannot view your own profile' };
@@ -31,7 +33,7 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
 
   try {
     // 0. Verify viewed user exists
-    const targetUser = await prisma.user.findUnique({
+    const targetUser = await prisma.user.findFirst({
       where: { id: profileId, isActive: true },
     });
     if (!targetUser) {
@@ -54,7 +56,6 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
 
     // --- Free User Daily Limit Check ---
     if (!isPremium) {
-      const FREE_DAILY_VIEW_LIMIT = 10;
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
 

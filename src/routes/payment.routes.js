@@ -46,4 +46,6 @@ router.get(
   paymentController.getPaymentById
 );
 
+router.get('/status/:orderId', paymentController.getOrderStatus);
+
 export default router;

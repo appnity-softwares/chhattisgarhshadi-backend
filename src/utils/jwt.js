@@ -6,6 +6,7 @@ class JWTUtils {
       id: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion ?? 0,
       type: 'access',
     };
 
@@ -18,6 +19,7 @@ class JWTUtils {
     const payload = {
       id: user.id,
       email: user.email,
+      tokenVersion: user.tokenVersion ?? 0,
       type: 'refresh',
     };
 

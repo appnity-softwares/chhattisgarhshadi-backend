@@ -48,6 +48,18 @@ export const getProfileByUserId = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Get contact info for a profile under backend policy controls
+ */
+export const getProfileContactInfo = asyncHandler(async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const contactInfo = await profileService.getProfileContactInfo(req.user.id, userId);
+
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, contactInfo, 'Contact info retrieved successfully'));
+});
+
+/**
  * Update my profile
  */
 export const updateMyProfile = asyncHandler(async (req, res) => {
@@ -134,6 +146,7 @@ export const profileController = {
   createProfile,
   getMyProfile,
   getProfileByUserId,
+  getProfileContactInfo,
   updateMyProfile,
   deleteMyProfile,
   searchProfiles,

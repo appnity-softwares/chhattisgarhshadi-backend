@@ -133,6 +133,145 @@ const getRecentMatches = async (limit = 10) => {
   }
 };
 
+/**
+ * [NEW] Get all payments (paginated, filterable, searchable)
+ * @param {Object} query - Validated query params
+ * @returns {Promise<Object>} Paginated list of payments with summary
+ */
+const getPayments = async (query) => {
+  try {
+    const { page, limit, skip } = getPaginationParams(query);
+    const { status, search } = query;
+
+    const normalizedSearch = search?.trim();
+    const summaryWhere = {};
+
+    if (normalizedSearch) {
+      summaryWhere.OR = [
+        { transactionId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { orderId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { razorpayOrderId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { razorpayPaymentId: { contains: normalizedSearch, mode: 'insensitive' } },
+        { paymentMethod: { contains: normalizedSearch, mode: 'insensitive' } },
+        { paymentGateway: { contains: normalizedSearch, mode: 'insensitive' } },
+        {
+          user: {
+            is: {
+              OR: [
+                { email: { contains: normalizedSearch, mode: 'insensitive' } },
+                { phone: { contains: normalizedSearch } },
+                {
+                  profile: {
+                    is: {
+                      OR: [
+                        { firstName: { contains: normalizedSearch, mode: 'insensitive' } },
+                        { lastName: { contains: normalizedSearch, mode: 'insensitive' } },
+                        { profileId: { contains: normalizedSearch, mode: 'insensitive' } },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ];
+    }
+
+    const where = {
+      ...summaryWhere,
+      ...(status ? { status } : {}),
+    };
+
+    const [
+      payments,
+      total,
+      totalPayments,
+      completedPayments,
+      pendingPayments,
+      failedPayments,
+      refundedPayments,
+      cancelledPayments,
+      completedRevenue,
+    ] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              profile: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  profileId: true,
+                  city: true,
+                  state: true,
+                },
+              },
+            },
+          },
+          subscription: {
+            include: {
+              plan: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  duration: true,
+                  price: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      prisma.payment.count({ where }),
+      prisma.payment.count({ where: summaryWhere }),
+      prisma.payment.count({ where: { ...summaryWhere, status: 'COMPLETED' } }),
+      prisma.payment.count({ where: { ...summaryWhere, status: 'PENDING' } }),
+      prisma.payment.count({ where: { ...summaryWhere, status: 'FAILED' } }),
+      prisma.payment.count({ where: { ...summaryWhere, status: 'REFUNDED' } }),
+      prisma.payment.count({ where: { ...summaryWhere, status: 'CANCELLED' } }),
+      prisma.payment.aggregate({
+        where: { ...summaryWhere, status: 'COMPLETED' },
+        _sum: {
+          amount: true,
+        },
+      }),
+    ]);
+
+    const pagination = getPaginationMetadata(page, limit, total);
+
+    return {
+      payments,
+      pagination,
+      summary: {
+        totalPayments,
+        completedPayments,
+        pendingPayments,
+        failedPayments,
+        refundedPayments,
+        cancelledPayments,
+        completedRevenue: Number(completedRevenue._sum.amount || 0),
+      },
+    };
+  } catch (error) {
+    logger.error('Error in getPayments:', error);
+    throw new ApiError(
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      'Failed to retrieve payments'
+    );
+  }
+};
+
 // --- ADDED FOR REPORTS ---
 
 /**
@@ -397,7 +536,7 @@ const verifyProfile = async (profileId, isVerified) => {
 /**
  * [NEW] Update profile status (Admin)
  */
-const updateProfileStatus = async (profileId, isPublished, statusReason) => {
+const updateProfileStatus = async (profileId, isPublished, _statusReason) => {
   try {
     const updatedProfile = await prisma.profile.update({
       where: { id: profileId },
@@ -485,6 +624,7 @@ export const adminService = {
   cleanupExpiredTokens,
   getRecentUsers,
   getRecentMatches,
+  getPayments,
   getReports,
   getReportById,
   updateReportStatus,

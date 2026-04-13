@@ -1,6 +1,6 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, CONTACT_REQUEST_STATUS, USER_ROLES, NOTIFICATION_TYPES } from '../utils/constants.js';
+import { HTTP_STATUS, CONTACT_REQUEST_STATUS, NOTIFICATION_TYPES } from '../utils/constants.js';
 import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js';
 import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';

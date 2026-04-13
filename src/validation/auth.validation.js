@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-// Regex for an Indian phone number (10 digits, starting with 6, 7, 8, or 9)
-const phoneRegex = /^[6-9]\d{9}$/;
+
 
 
 

@@ -8,7 +8,7 @@ import {
   getMatchesQuerySchema,
 } from '../validation/match.validation.js';
 // ADDED: Import cache middleware for performance
-import { cacheMatches, cacheMiddleware } from '../middleware/cache.middleware.js';
+import { cacheMiddleware } from '../middleware/cache.middleware.js';
 
 const router = Router();
 

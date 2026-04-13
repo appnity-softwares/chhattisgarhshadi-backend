@@ -8,8 +8,12 @@
 import cron from 'node-cron';
 import prisma from '../config/database.js';
 import { notificationService } from '../services/notification.service.js';
-import { NOTIFICATION_TYPES, SUBSCRIPTION_STATUS, USER_ROLES } from '../utils/constants.js';
+import { NOTIFICATION_TYPES, SUBSCRIPTION_STATUS } from '../utils/constants.js';
 import { logger } from '../config/logger.js';
+import {
+    activateNextQueuedSubscription,
+    reconcileUserRole,
+} from './subscriptionLifecycle.service.js';
 
 /**
  * Send subscription expiry reminders
@@ -67,8 +71,6 @@ export const sendExpiryReminders = async () => {
 
             // Send notifications
             for (const subscription of expiringSubscriptions) {
-                const userName = subscription.user?.profile?.firstName || 'User';
-
                 await notificationService.createNotification({
                     userId: subscription.userId,
                     type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRING,
@@ -127,34 +129,35 @@ export const handleExpiredSubscriptions = async () => {
                     data: { status: SUBSCRIPTION_STATUS.EXPIRED },
                 });
 
-                // 2. Prevent aggressive downgrade: Check if they have another active plan
-                const otherActiveSub = await prisma.userSubscription.findFirst({
-                    where: {
-                        userId: subscription.userId,
-                        id: { not: subscription.id },
-                        status: SUBSCRIPTION_STATUS.ACTIVE,
-                        endDate: { gt: new Date() },
-                    },
-                });
+                const queuedSub = await activateNextQueuedSubscription(subscription.userId, new Date());
 
-                if (!otherActiveSub) {
-                    await prisma.user.update({
-                        where: { id: subscription.userId },
-                        data: { role: USER_ROLES.USER },
+                if (queuedSub) {
+                    logger.info(`Activated queued subscription ${queuedSub.id} for user ${subscription.userId}`);
+                    
+                    // Notify user
+                    await notificationService.createNotification({
+                        userId: subscription.userId,
+                        type: NOTIFICATION_TYPES.SUBSCRIPTION_ACTIVATED,
+                        title: 'New Plan Activated! 🚀',
+                        message: `Your queued ${queuedSub.plan.name} plan is now active. Enjoy your benefits!`,
+                        data: { type: 'SUBSCRIPTION_ACTIVATED', subscriptionId: String(queuedSub.id) },
+                    });
+                } else {
+                    // 3. Downgrade Logic (if no active or queued plans left)
+                    await reconcileUserRole(subscription.userId);
+
+                    // Send expiration notification
+                    await notificationService.createNotification({
+                        userId: subscription.userId,
+                        type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
+                        title: 'Subscription Expired 😢',
+                        message: 'Your premium subscription has expired. Renew now to restore your premium features!',
+                        data: {
+                            type: 'SUBSCRIPTION_EXPIRED',
+                            subscriptionId: String(subscription.id),
+                        },
                     });
                 }
-
-                // 3. Send expiration notification
-                await notificationService.createNotification({
-                    userId: subscription.userId,
-                    type: NOTIFICATION_TYPES.SUBSCRIPTION_EXPIRED,
-                    title: 'Subscription Expired 😢',
-                    message: 'Your premium subscription has expired. Renew now to restore your premium features!',
-                    data: {
-                        type: 'SUBSCRIPTION_EXPIRED',
-                        subscriptionId: String(subscription.id),
-                    },
-                });
 
                 processedCount++;
             } catch (err) {

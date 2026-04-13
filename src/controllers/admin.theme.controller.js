@@ -1,4 +1,5 @@
 import prisma from '../config/database.js';
+import { logger } from '../config/logger.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HTTP_STATUS } from '../utils/constants.js';

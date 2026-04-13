@@ -16,7 +16,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
 
   // CORS
-  CORS_ORIGIN: z.string().default('*'),
+  CORS_ORIGIN: z
+    .string()
+    .default('https://chhattisgarhshadi.com,https://admin.chhattisgarhshadi.com'),
   FRONTEND_URL: z.string().optional(),
 
   // JWT

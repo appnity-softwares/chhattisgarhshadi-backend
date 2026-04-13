@@ -10,7 +10,7 @@ import {
   mediaIdSchema
 } from '../validation/profile.validation.js';
 // ADDED: Import cache middleware for performance
-import { cacheProfile, cacheMiddleware } from '../middleware/cache.middleware.js';
+import { cacheProfile } from '../middleware/cache.middleware.js';
 
 const router = Router();
 
@@ -31,7 +31,6 @@ router.get(
   '/search',
   requireCompleteProfile,
   validate(searchProfilesSchema),
-  cacheMiddleware({ prefix: 'search:', ttl: 300 }),
   profileController.searchProfiles
 );
 
@@ -49,6 +48,13 @@ router.get(
 );
 
 // Get public profile by userId - cached for 5 minutes
+router.get(
+  '/:userId/contact',
+  requireCompleteProfile,
+  validate(objectIdSchema),
+  profileController.getProfileContactInfo
+);
+
 router.get(
   '/:userId',
   requireCompleteProfile,

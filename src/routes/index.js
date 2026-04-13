@@ -57,6 +57,10 @@ router.use('/photo-request', photoRequestRoutes);
 import matchRoutes from './match.routes.js';
 router.use('/matches', matchRoutes);
 
+// Relationship routes
+import relationshipRoutes from './relationship.routes.js';
+router.use('/relationship', relationshipRoutes);
+
 // Message routes
 import messageRoutes from './message.routes.js';
 router.use('/messages', messageRoutes);

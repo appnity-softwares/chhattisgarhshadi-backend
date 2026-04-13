@@ -167,7 +167,11 @@ router.put('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) => 
     }
 
     let existingData = {};
-    try { existingData = JSON.parse(existing.value); } catch {}
+    try {
+        existingData = JSON.parse(existing.value);
+    } catch (_error) {
+        existingData = {};
+    }
 
     const value = JSON.stringify({
         ...existingData,

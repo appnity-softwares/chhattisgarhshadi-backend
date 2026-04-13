@@ -1,4 +1,25 @@
 import { USER_ROLES } from './constants.js';
+
+const LIFETIME_PREMIUM_ROLES = [
+    USER_ROLES.PREMIUM_USER,
+    USER_ROLES.ADMIN,
+    USER_ROLES.SUPER_ADMIN,
+];
+
+export const hasUnlimitedPremiumRole = (user) => {
+    if (!user) return false;
+    return LIFETIME_PREMIUM_ROLES.includes(user.role);
+};
+
+export const hasActivePaidSubscription = (user) => {
+    if (!user?.subscriptions || !Array.isArray(user.subscriptions)) {
+        return false;
+    }
+
+    return user.subscriptions.some(sub =>
+        sub.status === 'ACTIVE' && new Date(sub.endDate) > new Date()
+    );
+};
 /**
  * Helper to determine user's premium status and feature limits
  * based on their active subscription, abstracting away hardcoded roles.
@@ -14,21 +35,12 @@ import { USER_ROLES } from './constants.js';
 export const hasPremiumAccess = (user) => {
     if (!user) return false;
 
-    // 1. Check if user has an explicitly granted premium role (for lifetime access or admins)
-    const premiumRoles = [USER_ROLES.PREMIUM_USER, USER_ROLES.BASIC_USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN];
-    if (premiumRoles.includes(user.role)) {
+    // Lifetime premium/admin roles bypass subscription lookups.
+    if (hasUnlimitedPremiumRole(user)) {
         return true;
     }
 
-    // 2. Check if user has an active subscription
-    if (user.subscriptions && Array.isArray(user.subscriptions)) {
-        const activeSub = user.subscriptions.find(sub => 
-            sub.status === 'ACTIVE' && new Date(sub.endDate) > new Date()
-        );
-        if (activeSub) return true;
-    }
-
-    return false;
+    return hasActivePaidSubscription(user);
 };
 
 /**

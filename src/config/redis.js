@@ -18,7 +18,7 @@ let isConnected = false;
  * @returns {Promise<Object>} The redis client
  */
 export const initializeRedis = () => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         try {
             if (redisClient) return resolve(redisClient);
 

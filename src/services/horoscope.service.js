@@ -35,21 +35,7 @@ const RASHIS = [
     'LIBRA', 'SCORPIO', 'SAGITTARIUS', 'CAPRICORN', 'AQUARIUS', 'PISCES'
 ];
 
-// Nakshatra to Rashi mapping (each nakshatra belongs to a rashi)
-const NAKSHATRA_TO_RASHI = {
-    ASHWINI: 'ARIES', BHARANI: 'ARIES', KRITTIKA: 'ARIES',
-    ROHINI: 'TAURUS', MRIGASHIRA: 'TAURUS',
-    ARDRA: 'GEMINI', PUNARVASU: 'GEMINI',
-    PUSHYA: 'CANCER', ASHLESHA: 'CANCER',
-    MAGHA: 'LEO', PURVA_PHALGUNI: 'LEO',
-    UTTARA_PHALGUNI: 'VIRGO', HASTA: 'VIRGO', CHITRA: 'VIRGO',
-    SWATI: 'LIBRA', VISHAKHA: 'LIBRA',
-    ANURADHA: 'SCORPIO', JYESHTHA: 'SCORPIO',
-    MULA: 'SAGITTARIUS', PURVA_ASHADHA: 'SAGITTARIUS',
-    UTTARA_ASHADHA: 'CAPRICORN', SHRAVANA: 'CAPRICORN',
-    DHANISHTA: 'AQUARIUS', SHATABHISHA: 'AQUARIUS',
-    PURVA_BHADRAPADA: 'PISCES', UTTARA_BHADRAPADA: 'PISCES', REVATI: 'PISCES'
-};
+
 
 // Nakshatra to Yoni (Animal) mapping
 const NAKSHATRA_TO_YONI = {
@@ -69,11 +55,7 @@ const NAKSHATRA_TO_YONI = {
     PURVA_BHADRAPADA: 'LION'
 };
 
-// Yoni compatibility matrix (0-4 points)
-const YONI_COMPATIBILITY = {
-    HORSE: { HORSE: 4, ELEPHANT: 2, GOAT: 2, SERPENT: 3, DOG: 2, CAT: 2, RAT: 2, COW: 1, BUFFALO: 0, TIGER: 1, DEER: 3, MONKEY: 2, MONGOOSE: 2, LION: 1 },
-    // Simplified - same animal = 4, friendly = 3, neutral = 2, enemy = 0-1
-};
+
 
 // Nadi mapping (3 types)
 const NAKSHATRA_TO_NADI = {

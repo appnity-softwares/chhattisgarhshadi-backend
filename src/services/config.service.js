@@ -1,6 +1,4 @@
 import prisma from '../config/database.js';
-import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS } from '../utils/constants.js';
 
 class ConfigService {
   /**

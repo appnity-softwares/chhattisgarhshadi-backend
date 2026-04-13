@@ -1,6 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { userService } from '../services/user.service.js';
+import { getUserAccess as computeUserAccess } from '../services/access.service.js';
 import { HTTP_STATUS } from '../utils/constants.js';
 
 /**
@@ -79,12 +80,23 @@ export const deleteFcmToken = asyncHandler(async (req, res) => {
     .send();
 });
 
+/**
+ * Get user's feature access and limits
+ */
+export const getUserAccess = asyncHandler(async (req, res) => {
+  const access = await computeUserAccess(req.user.id);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, access, 'User access retrieved successfully'));
+});
+
 export const userController = {
   getUserById,
   getMyProfile,
   updateMe,
   deleteMe,
   searchUsers,
-  registerFcmToken, // ADDED
-  deleteFcmToken, // ADDED
+  registerFcmToken,
+  deleteFcmToken,
+  getUserAccess,
 };

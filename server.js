@@ -92,8 +92,12 @@ const gracefulShutdown = async (signal) => {
       logger.info('Database disconnected');
 
       // Close Socket.io connections
-      io.close(() => {
+      io.close(async () => {
         logger.info('Socket.io connections closed');
+        
+        // Close Redis
+        await closeRedis();
+        logger.info('Redis connection closed');
       });
 
       process.exit(0);

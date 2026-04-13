@@ -21,7 +21,7 @@
  */
 
 import prisma from '../config/database.js';
-import { getCompatibility } from './astrology.service.js';
+
 import { logger } from '../config/logger.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
 
@@ -132,12 +132,7 @@ const getEducationRank = (education) => {
     return ranks[education] || 0;
 };
 
-const parseIncomeToNumber = (income) => {
-    if (!income) return 0;
-    if (typeof income === 'number') return income;
-    const match = income.match(/(\d+)/);
-    return match ? parseInt(match[1]) * 100000 : 0;
-};
+
 
 /**
  * Safely parse potential JSON array string => JS array

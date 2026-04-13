@@ -32,6 +32,18 @@ export const authenticate = async (req, res, next) => {
       where: { id: decoded.id },
       include: {
         profile: true,
+        subscriptions: {
+          where: {
+            status: 'ACTIVE',
+            endDate: { gt: new Date() },
+          },
+          include: {
+            plan: true,
+          },
+          orderBy: {
+            endDate: 'desc',
+          },
+        },
       },
     });
 
@@ -41,6 +53,10 @@ export const authenticate = async (req, res, next) => {
 
     if (!user.isActive || user.isBanned) {
       return next(new ApiError(HTTP_STATUS.FORBIDDEN, 'Account is not active'));
+    }
+
+    if ((decoded.tokenVersion ?? 0) !== user.tokenVersion) {
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Session has expired. Please log in again.'));
     }
 
     // Attach user to request
@@ -71,10 +87,23 @@ export const optionalAuth = async (req, res, next) => {
           where: { id: decoded.id },
           include: {
             profile: true,
+            subscriptions: {
+              where: {
+                status: 'ACTIVE',
+                endDate: { gt: new Date() },
+              },
+              include: { plan: true },
+              orderBy: { endDate: 'desc' },
+            },
           },
         });
 
-        if (user && user.isActive && !user.isBanned) {
+        if (
+          user &&
+          user.isActive &&
+          !user.isBanned &&
+          (decoded.tokenVersion ?? 0) === user.tokenVersion
+        ) {
           req.user = user;
         }
       }
@@ -102,9 +131,9 @@ export const requireCompleteProfile = async (req, res, next) => {
       return next(new ApiError(HTTP_STATUS.FORBIDDEN, 'Profile not found. Please create your profile first.'));
     }
 
-    // Check profile completeness (lowered to 0 for testing - set to 50 for production)
+    // Production eligibility gate for discovery/interaction surfaces.
     const profileCompleteness = req.user.profile.profileCompleteness || 0;
-    const requiredCompleteness = 0; // TODO: Change to 50 for production
+    const requiredCompleteness = 50;
 
     if (profileCompleteness < requiredCompleteness) {
       const error = new ApiError(HTTP_STATUS.FORBIDDEN, 'Please complete your profile to access this feature');

@@ -7,7 +7,11 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(8080),
   DATABASE_URL: z.string(),
-  CORS_ORIGIN: z.string().default('*'),
+  CORS_ORIGIN: z
+    .string()
+    .default(
+      'https://chhattisgarhshadi.com,https://admin.chhattisgarhshadi.com'
+    ),
 
   // JWT - FIXED: Use correct variable names
   JWT_ACCESS_SECRET: z.string(),

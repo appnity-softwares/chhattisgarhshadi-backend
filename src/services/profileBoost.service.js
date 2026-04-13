@@ -64,7 +64,7 @@ export const activateBoost = async (userId, boostType, transactionId) => {
     if (!boostPackage && boostType) {
         // Try finding by id (lowercase)
         const lowerType = boostType.toLowerCase();
-        const entry = Object.entries(BOOST_PACKAGES).find(([key, pkg]) =>
+        const entry = Object.entries(BOOST_PACKAGES).find(([_key, pkg]) =>
             pkg.id === boostType || pkg.id === lowerType
         );
         if (entry) {

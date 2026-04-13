@@ -147,6 +147,16 @@ export const getRecentMatches = asyncHandler(async (req, res) => {
     );
 });
 
+/**
+ * [NEW] Get payments (Admin)
+ */
+export const getPayments = asyncHandler(async (req, res) => {
+  const result = await adminService.getPayments(req.query);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Payments retrieved successfully'));
+});
+
 // --- ADDED FOR REPORTS ---
 
 /**
@@ -351,6 +361,7 @@ export const adminController = {
   cleanupExpiredTokens,
   getRecentUsers,
   getRecentMatches,
+  getPayments,
   getReports,
   getReportById,
   updateReport,

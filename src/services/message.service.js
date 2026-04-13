@@ -13,6 +13,7 @@ import { assertPerSecondLimit, assertDailyLimit } from './chatRateLimit.service.
 import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
 import { enqueueMessageNotification } from './messageQueue.service.js';
+import { incrementUsage } from './usageLimits.service.js';
 
 // Define a reusable Prisma select for public-facing user data
 // This prevents leaking sensitive fields like email, phone, etc.
@@ -71,70 +72,17 @@ export const sendMessage = async (
       throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid content type');
     }
 
-    // Enforce chat eligibility (match accepted OR contact approved) + block check
-    const { isMatched } = await chatPolicyService.assertCanChat(senderId, receiverId);
+    const eligibility = await chatPolicyService.assertCanChat(senderId, receiverId);
+    const isMatched = eligibility.relationshipStatus === 'accepted';
 
     // Check if receiver exists and is active
-    const receiver = await prisma.user.findUnique({
+    const receiver = await prisma.user.findFirst({
       where: { id: receiverId, isActive: true, isBanned: false },
     });
 
     if (!receiver) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Receiver not found');
     }
-
-    // --- SENDER Subscription Check with Plan Limits ---
-    const sender = await prisma.user.findUnique({
-      where: { id: senderId },
-      include: {
-        subscriptions: {
-          where: {
-            status: 'ACTIVE',
-            endDate: { gt: new Date() },
-          },
-          include: { plan: true },
-        },
-      },
-    });
-
-    const senderIsPremiumRole = hasPremiumAccess(sender);
-    const activeSubscription = sender?.subscriptions?.[0];
-
-    // --- SENDER Subscription & Free Trial Check ---
-    if (!senderIsPremiumRole && !activeSubscription) {
-      // Allow 2 free messages total for non-premium users
-      const totalSentMessages = await prisma.message.count({
-        where: { senderId },
-      });
-
-      if (totalSentMessages >= 2) {
-        throw new ApiError(
-          HTTP_STATUS.FORBIDDEN,
-          'You have reached your limit of 2 free messages. Upgrade to Premium for unlimited chatting!'
-        );
-      }
-    }
-
-    // Check plan-level message limits (only for subscription users, not PREMIUM_USER role)
-    if (activeSubscription && !senderIsPremiumRole) {
-      const maxMessages = activeSubscription.plan.maxMessagesSend;
-      const usedMessages = activeSubscription.messagesUsed;
-
-      // 0 = unlimited
-      if (maxMessages !== 0 && usedMessages >= maxMessages) {
-        throw new ApiError(
-          HTTP_STATUS.FORBIDDEN,
-          `You have reached your message limit (${maxMessages}). Upgrade to Premium for unlimited messages.`,
-          {
-            currentPlan: activeSubscription.plan.name,
-            used: usedMessages,
-            max: maxMessages,
-            upgradeRequired: true,
-          }
-        );
-      }
-    }
-    // --- End SENDER Subscription Check ---
 
     // Daily rate limits (pre/post match)
     if (!(await assertDailyLimit(senderId, receiverId, isMatched))) {
@@ -200,13 +148,13 @@ export const sendMessage = async (
       data: { updatedAt: new Date() },
     });
 
-    // --- Increment message usage for subscription users ---
-    // We only skip incrementing if the user HAS a Lifetime Premium Role (PREMIUM_USER, ADMIN, etc.)
-    // and NOT just a temporary subscription.
-    const hasLifetimePremium = sender.role === 'PREMIUM_USER' || sender.role === 'ADMIN';
-    if (activeSubscription && !hasLifetimePremium) {
+    // Track daily usage (for rate limiting and plan enforcement)
+    await incrementUsage(senderId, 'messagesCount');
+
+    // Track plan total usage if part of a specific subscription
+    if (eligibility.access?.subscriptionId) {
       await prisma.userSubscription.update({
-        where: { id: activeSubscription.id },
+        where: { id: eligibility.access.subscriptionId },
         data: { messagesUsed: { increment: 1 } },
       });
     }
@@ -362,24 +310,39 @@ export const getAllConversations = async (userId) => {
 
     const otherUserIds = filteredPartners.map((c) => c.otherUserId);
 
-    // Filter by accepted match/contact to enforce chat eligibility
-    const matches = await prisma.matchRequest.findMany({
-      where: {
-        status: 'ACCEPTED',
-        OR: [
-          { senderId: userId, receiverId: { in: otherUserIds } },
-          { receiverId: userId, senderId: { in: otherUserIds } },
-        ],
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        subscriptions: {
+          where: {
+            status: 'ACTIVE',
+            endDate: { gt: new Date() },
+          },
+          include: { plan: true },
+        },
       },
-      select: { senderId: true, receiverId: true },
     });
 
-    const allowedSet = new Set();
-    for (const m of matches) {
-      const otherId = m.senderId === userId ? m.receiverId : m.senderId;
-      allowedSet.add(otherId);
+    let eligiblePartners = filteredPartners;
+    if (!hasPremiumAccess(currentUser)) {
+      const matches = await prisma.matchRequest.findMany({
+        where: {
+          status: 'ACCEPTED',
+          OR: [
+            { senderId: userId, receiverId: { in: otherUserIds } },
+            { receiverId: userId, senderId: { in: otherUserIds } },
+          ],
+        },
+        select: { senderId: true, receiverId: true },
+      });
+
+      const allowedSet = new Set();
+      for (const m of matches) {
+        const otherId = m.senderId === userId ? m.receiverId : m.senderId;
+        allowedSet.add(otherId);
+      }
+      eligiblePartners = filteredPartners.filter((c) => allowedSet.has(c.otherUserId));
     }
-    const eligiblePartners = filteredPartners.filter((c) => allowedSet.has(c.otherUserId));
 
     if (eligiblePartners.length === 0) {
       return [];
@@ -591,6 +554,19 @@ export const getUnreadCount = async (userId) => {
   }
 };
 
+export const getChatEligibility = async (senderId, receiverId) => {
+  try {
+    return await chatPolicyService.getChatEligibility(senderId, receiverId);
+  } catch (error) {
+    logger.error('Error in getChatEligibility:', error);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      'Error retrieving chat eligibility'
+    );
+  }
+};
+
 /**
  * Get undelivered messages for a user (SENT only)
  * Used on socket reconnect to recover missed messages
@@ -621,6 +597,7 @@ export const getUndeliveredMessages = async (userId, limit = 200) => {
 };
 
 export const messageService = {
+  getChatEligibility,
   sendMessage,
   getConversation,
   getAllConversations,

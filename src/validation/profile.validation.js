@@ -35,8 +35,6 @@ const profileBodyBase = {
   caste: z.string().min(2).optional(), // FIX: Made optional to match schema
   subCaste: z.string().optional(),
   gothram: z.string().optional(), // ADDED
-  intercasteAllowed: z.boolean().optional(), // ADDED
-
   // Chhattisgarh-Specific
   nativeVillage: z.string().optional(),
   speaksChhattisgarhi: z.boolean().optional(), // Use optional, not default
@@ -140,8 +138,9 @@ export const updateProfileSchema = z.object({
 
 export const searchProfilesSchema = z.object({
   query: z.object({
-    page: z.coerce.number().int().positive().optional(),
+    cursor: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().positive().optional(),
+    search: z.string().trim().min(1).optional(),
     gender: z.nativeEnum(GENDER).optional(),
     minAge: z.coerce.number().int().optional(),
     maxAge: z.coerce.number().int().max(100).optional(),
@@ -159,7 +158,6 @@ export const searchProfilesSchema = z.object({
     income: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
-    intercasteAllowed: z.coerce.boolean().optional(),
     isVerified: z.coerce.boolean().optional(),
     withPhoto: z.coerce.boolean().optional(),
   }),

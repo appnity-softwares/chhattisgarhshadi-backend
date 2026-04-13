@@ -26,6 +26,7 @@ enum UserRole {
   VERIFIED_USER
   PREMIUM_USER
   ADMIN
+  SUPER_ADMIN
 }
 
 enum Gender {
@@ -135,6 +136,7 @@ enum SubscriptionStatus {
   EXPIRED
   CANCELLED
   PENDING
+  QUEUED
 }
 
 enum PaymentStatus {
@@ -151,13 +153,26 @@ enum NotificationType {
   MATCH_REJECTED
   NEW_MESSAGE
   PROFILE_VIEW
+  PROFILE_VIEWED
   SHORTLISTED
   SUBSCRIPTION_EXPIRY
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_EXPIRING
+  SUBSCRIPTION_EXPIRED
   PAYMENT_SUCCESS
   PAYMENT_FAILED
   PROFILE_VERIFIED
+  CONTACT_REQUEST
+  CONTACT_APPROVED
+  CONTACT_REJECTED
+  PHOTO_REQUEST
+  PHOTO_APPROVED
+  PHOTO_REJECTED
   PROFILE_REJECTED
+  VERIFICATION_REJECTED
   SYSTEM_ALERT
+  SYSTEM_ANNOUNCEMENT
+  WELCOME
   SECURITY_ALERT
 }
 
@@ -271,6 +286,7 @@ model User {
   lastLoginIp   String?   @db.Inet
   loginAttempts Int       @default(0)
   lockedUntil   DateTime?
+  tokenVersion  Int       @default(0)
 
   // Metadata
   deviceInfo String? @db.Text // JSON
@@ -1049,6 +1065,7 @@ model UserSubscription {
   payments Payment[]
 
   @@index([userId, status])
+  @@index([userId, status, endDate])
   @@index([endDate])
   @@index([planId]) // Added for plan-based queries
   @@map("user_subscriptions")

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UserRole } from '@prisma/client'; // Import enum from Prisma
+import { PaymentStatus, UserRole } from '@prisma/client'; // Import enum from Prisma
 // ADDED: Import ReportStatus
 import { REPORT_STATUS } from '../utils/constants.js';
 
@@ -51,6 +51,16 @@ export const getReportsSchema = z.object({
     page: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().positive().optional(),
     status: z.nativeEnum(REPORT_STATUS).optional(),
+  }),
+});
+
+// Schema for getting payments (with filter and search)
+export const getPaymentsSchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().optional(),
+    status: z.nativeEnum(PaymentStatus).optional(),
+    search: z.string().trim().min(1).optional(),
   }),
 });
 

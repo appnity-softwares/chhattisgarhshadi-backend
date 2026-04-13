@@ -93,6 +93,18 @@ export const createUpgradeOrder = asyncHandler(async (req, res) => {
     );
 });
 
+/**
+ * Get payment status by Razorpay order ID
+ */
+export const getOrderStatus = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+  const result = await paymentService.getOrderStatus(orderId);
+
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Payment status retrieved successfully'));
+});
+
 export const paymentController = {
   createOrder,
   createUpgradeOrder,
@@ -100,4 +112,5 @@ export const paymentController = {
   handleWebhook,
   getPaymentById,
   getMyPayments,
+  getOrderStatus,
 };

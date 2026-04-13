@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
+import { authLimiter, otpLimiter } from '../middleware/rate-limiter.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   refreshTokenSchema,
@@ -11,17 +12,16 @@ import {
 
 const router = Router();
 
-// Rate limiter removed for authentication routes
-
-
 router.post(
   '/refresh',
+  authLimiter,
   validate(refreshTokenSchema),
   authController.refreshToken
 );
 
 router.post(
   '/logout',
+  authLimiter,
   authenticate,
   validate(logoutSchema),
   authController.logout
@@ -30,6 +30,7 @@ router.post(
 // Firebase Phone Login (New)
 router.post(
   '/phone/login',
+  otpLimiter,
   validate(phoneLoginSchema),
   authController.phoneLogin
 );
@@ -37,6 +38,7 @@ router.post(
 // Firebase Phone Verification
 router.post(
   '/phone/verify-firebase',
+  authLimiter,
   authenticate,
   validate(verifyFirebasePhoneSchema),
   authController.verifyFirebasePhone

@@ -156,8 +156,9 @@ export const getAccountSecuritySettings = async (userId) => {
     }
     
     // Do not return sensitive fields like twoFactorSecret or backupCodes
-    // FIX: Destructure the original field name to an underscore-prefixed variable
-    const { twoFactorSecret: _twoFactorSecret, backupCodes: _backupCodes, ...safeSettings } = settings;
+    const safeSettings = { ...settings };
+    delete safeSettings.twoFactorSecret;
+    delete safeSettings.backupCodes;
     return safeSettings;
   } catch (error) {
     logger.error('Error in getAccountSecuritySettings:', error);
@@ -174,14 +175,11 @@ export const getAccountSecuritySettings = async (userId) => {
 export const updateAccountSecuritySettings = async (userId, data) => {
   try {
     // Prevent client from updating sensitive fields
-    // FIX: Destructure the original field name to an underscore-prefixed variable
-    const { 
-      twoFactorSecret: _twoFactorSecret, 
-      backupCodes: _backupCodes, 
-      recoveryEmailVerified: _recoveryEmailVerified, 
-      recoveryPhoneVerified: _recoveryPhoneVerified, 
-      ...safeData 
-    } = data;
+    const safeData = { ...data };
+    delete safeData.twoFactorSecret;
+    delete safeData.backupCodes;
+    delete safeData.recoveryEmailVerified;
+    delete safeData.recoveryPhoneVerified;
 
     const settings = await prisma.accountSecuritySettings.upsert({
       where: { userId },
@@ -194,9 +192,10 @@ export const updateAccountSecuritySettings = async (userId, data) => {
     
     logger.info(`Account security settings updated for user: ${userId}`);
     // Do not return sensitive fields
-    // FIX: Destructure the original field name to an underscore-prefixed variable
-    const { twoFactorSecret: _s, backupCodes: _b, ...safeSettings } = settings;
-    return safeSettings;
+    const finalSettings = { ...settings };
+    delete finalSettings.twoFactorSecret;
+    delete finalSettings.backupCodes;
+    return finalSettings;
   } catch (error) {
     logger.error('Error in updateAccountSecuritySettings:', error);
     throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error updating security settings');

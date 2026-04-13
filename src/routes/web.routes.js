@@ -9,13 +9,12 @@ import { paymentService } from '../services/payment.service.js';
 import { config } from '../config/config.js';
 import prisma from '../config/database.js';
 import jwt from 'jsonwebtoken';
-import path from 'path';
 import { authenticate as authenticateWebUser } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Deep link scheme for the app
-const APP_DEEP_LINK = 'chhattisgarhshaadi://';
+const APP_DEEP_LINK = 'cgshadi://';
 const WEBSITE_URL = 'https://www.chhattisgarhshadi.com';
 
 
@@ -23,14 +22,15 @@ const WEBSITE_URL = 'https://www.chhattisgarhshadi.com';
  * Generate a temporary payment token for web checkout
  * POST /api/v1/web/payment/create-link
  */
-router.post('/payment/create-link', async (req, res) => {
+router.post('/payment/create-link', authenticateWebUser, async (req, res) => {
     try {
-        const { userId, planId } = req.body;
+        const { planId } = req.body;
+        const userId = req.user.id;
 
-        if (!userId || !planId) {
+        if (!planId) {
             return res.status(400).json({
                 success: false,
-                error: 'userId and planId are required'
+                error: 'planId is required'
             });
         }
 
@@ -38,8 +38,8 @@ router.post('/payment/create-link', async (req, res) => {
         const order = await paymentService.createOrder(userId, planId);
 
         // Get plan details for display
-        const plan = await prisma.subscriptionPlan.findUnique({
-            where: { id: planId }
+        const plan = await prisma.subscriptionPlan.findFirst({
+            where: { id: planId, isActive: true }
         });
 
         // Generate a secure token for the payment session
@@ -99,8 +99,8 @@ router.post('/payment/initiate-session', authenticateWebUser, async (req, res) =
         const order = await paymentService.createOrder(userId, planId);
 
         // Get plan details
-        const plan = await prisma.subscriptionPlan.findUnique({
-            where: { id: planId }
+        const plan = await prisma.subscriptionPlan.findFirst({
+            where: { id: planId, isActive: true }
         });
 
         res.json({
@@ -187,8 +187,8 @@ router.get('/payment/details', async (req, res) => {
                     }
                 }
             }),
-            prisma.subscriptionPlan.findUnique({
-                where: { id: decoded.planId }
+            prisma.subscriptionPlan.findFirst({
+                where: { id: decoded.planId, isActive: true }
             })
         ]);
 
@@ -291,7 +291,6 @@ router.post('/payment/failed', async (req, res) => {
 
 // ==================== BOOST PAYMENT ENDPOINTS ====================
 
-import profileBoostService from '../services/profileBoost.service.js';
 import { razorpayInstance, isRazorpayConfigured } from '../config/razorpay.js';
 import { activateBoost, BOOST_PACKAGES } from '../services/profileBoost.service.js';
 import crypto from 'crypto';
@@ -301,14 +300,15 @@ import crypto from 'crypto';
  * Generate a temporary payment token for boost web checkout
  * POST /api/v1/web/boost/create-link
  */
-router.post('/boost/create-link', async (req, res) => {
+router.post('/boost/create-link', authenticateWebUser, async (req, res) => {
     try {
-        const { userId, boostType } = req.body;
+        const { boostType } = req.body;
+        const userId = req.user.id;
 
-        if (!userId || !boostType) {
+        if (!boostType) {
             return res.status(400).json({
                 success: false,
-                error: 'userId and boostType are required'
+                error: 'boostType is required'
             });
         }
 
@@ -475,7 +475,7 @@ router.get('/boost/details', async (req, res) => {
  */
 router.post('/boost/success', async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, boostType, userId } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
         // Verify signature
         const text = razorpay_order_id + '|' + razorpay_payment_id;
@@ -491,10 +491,18 @@ router.post('/boost/success', async (req, res) => {
             });
         }
 
-        // Activate the boost
-        if (userId && boostType) {
-            await activateBoost(parseInt(userId), boostType, razorpay_payment_id);
+        const order = await razorpayInstance.orders.fetch(razorpay_order_id);
+        const orderUserId = Number(order?.notes?.userId);
+        const orderBoostType = order?.notes?.boostType;
+
+        if (!orderUserId || !orderBoostType) {
+            return res.status(400).json({
+                success: false,
+                error: 'Boost order metadata missing'
+            });
         }
+
+        await activateBoost(orderUserId, orderBoostType, razorpay_payment_id);
 
         const successUrl = `${APP_DEEP_LINK}boost/success?orderId=${razorpay_order_id}&paymentId=${razorpay_payment_id}`;
         res.json({
@@ -512,4 +520,3 @@ router.post('/boost/success', async (req, res) => {
 });
 
 export default router;
-

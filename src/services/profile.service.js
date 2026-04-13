@@ -1,27 +1,107 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS, ERROR_MESSAGES } from '../utils/constants.js';
-import {
-  getPaginationParams,
-  getPaginationMetadata,
-  calculateAge,
-} from '../utils/helpers.js';
+import { calculateAge } from '../utils/helpers.js';
 import { updateProfileCompleteness } from '../utils/profile.helpers.js';
 import { logger } from '../config/logger.js';
-// Import uploadService to delete R2 objects
 import { uploadService } from './upload.service.js';
-// ADDED: Import blockService to filter searches
 import { blockService } from './block.service.js';
+import contactVisibilityService from './contactVisibility.service.js';
 
-/**
- * Create user profile
- * @param {string} userId - User ID
- * @param {Object} data - Profile data (validated)
- * @returns {Promise<Object>}
- */
+const profileUserSelect = {
+  id: true,
+  role: true,
+  createdAt: true,
+  profilePicture: true,
+};
+
+const profileInclude = {
+  user: {
+    select: profileUserSelect,
+  },
+  media: {
+    include: {
+      privacySettings: true,
+    },
+  },
+  education: true,
+  occupations: true,
+};
+
+const profileSearchInclude = {
+  user: {
+    select: profileUserSelect,
+  },
+  media: {
+    where: {
+      type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+    },
+    include: {
+      privacySettings: true,
+    },
+    take: 3,
+  },
+};
+
+const sanitizeProfileInput = (data) => {
+  const profileData = { ...(data || {}) };
+  delete profileData.intercasteAllowed;
+  return profileData;
+};
+
+const transformMedia = (media = []) =>
+  media.map((item) => ({
+    id: item.id,
+    url: item.url,
+    thumbnailUrl: item.thumbnailUrl,
+    type: item.type,
+    isProfilePicture: item.isDefault,
+    privacySettings: item.privacySettings,
+    createdAt: item.createdAt,
+  }));
+
+const serializeProfile = (profile) => {
+  if (!profile) return null;
+
+  return {
+    ...profile,
+    user: profile.user
+      ? {
+          id: profile.user.id,
+          role: profile.user.role,
+          createdAt: profile.user.createdAt,
+          profilePicture: profile.user.profilePicture,
+        }
+      : null,
+    media: transformMedia(profile.media),
+    age: calculateAge(profile.dateOfBirth),
+    profileCompleteness: profile.profileCompleteness || 0,
+  };
+};
+
+const wrapProfileResponse = (profile) => {
+  const serializedProfile = serializeProfile(profile);
+
+  return {
+    profile: serializedProfile,
+    profileCompleteness: serializedProfile?.profileCompleteness || 0,
+  };
+};
+
+const getProfileRecordByUserId = (userId, include = profileInclude) =>
+  prisma.profile.findFirst({
+    where: {
+      userId,
+      user: {
+        isActive: true,
+        isBanned: false,
+      },
+    },
+    include,
+  });
+
 export const createProfile = async (userId, data) => {
   try {
-    // Check if profile already exists
     const existingProfile = await prisma.profile.findUnique({
       where: { userId },
     });
@@ -30,25 +110,24 @@ export const createProfile = async (userId, data) => {
       throw new ApiError(HTTP_STATUS.CONFLICT, 'Profile already exists');
     }
 
-    // eslint-disable-next-line no-unused-vars
-    const validData = data;
+    const profileData = sanitizeProfileInput(data);
 
-    const profile = await prisma.profile.create({
+    await prisma.profile.create({
       data: {
         userId,
-        ...validData,
-        isDraft: false,        // Mark as complete
-        isPublished: true,     // Auto-publish so it appears in searches
-        publishedAt: new Date(), // Set publish timestamp
+        ...profileData,
+        isDraft: false,
+        isPublished: true,
+        publishedAt: new Date(),
       },
     });
 
-    // Calculate and update completeness score
-    const score = await updateProfileCompleteness(prisma, userId);
-    profile.profileCompleteness = score;
+    await updateProfileCompleteness(prisma, userId);
+
+    const createdProfile = await getProfileRecordByUserId(userId);
 
     logger.info(`Profile created for user: ${userId}`);
-    return profile;
+    return wrapProfileResponse(createdProfile);
   } catch (error) {
     logger.error('Error in createProfile:', error);
     if (error instanceof ApiError) throw error;
@@ -56,136 +135,61 @@ export const createProfile = async (userId, data) => {
   }
 };
 
-/**
- * Get profile by user ID
- * @param {number} userId - ID of the profile to get
- * @param {number} [currentUserId] - ID of the user making the request
- * @returns {Promise<Object>}
- */
 export const getProfileByUserId = async (userId, currentUserId = null) => {
   try {
-    // --- Block Check [ADDED] ---
     if (currentUserId && userId !== currentUserId) {
       const blockedIdSet = await blockService.getAllBlockedUserIds(currentUserId);
       if (blockedIdSet.has(userId)) {
         throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
       }
     }
-    // --- End Block Check ---
 
-    const profile = await prisma.profile.findFirst({
-      where: { userId, user: { isActive: true, isBanned: false } }, // findFirst supports relation filters
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true, // Safe to show email on a profile page
-            role: true,
-            createdAt: true,
-          },
-        },
-        // MODIFIED: Also include privacy settings for each media
-        media: {
-          include: {
-            privacySettings: true,
-          },
-        },
-        education: true,
-        occupations: true,
-      },
-    });
+    const profile = await getProfileRecordByUserId(userId);
 
     if (!profile) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
     }
 
-    // --- Match Status Check [ADDED] ---
-    let matchStatus = null;
-    if (currentUserId && userId !== currentUserId) {
-      const matchRequest = await prisma.matchRequest.findFirst({
-        where: {
-          OR: [
-            { senderId: currentUserId, receiverId: userId },
-            { senderId: userId, receiverId: currentUserId },
-          ],
-        },
-        select: { status: true, senderId: true },
-      });
-
-      // If found, set status. Also useful to know WHO sent it, but status is key.
-      matchStatus = matchRequest?.status || null;
-
-      // Special case: If I am the receiver and it's PENDING, viewed logic might vary?
-      // For now, just returning the status key ('PENDING', 'ACCEPTED', etc.) is enough.
-    }
-    // --- End Match Status Check ---
-
-    // Transform media to match frontend expectations
-    const transformedMedia = profile.media?.map(m => ({
-      id: m.id,
-      url: m.url,
-      thumbnailUrl: m.thumbnailUrl,
-      type: m.type,
-      isProfilePicture: m.isDefault,
-      // ADDED: Pass privacy settings along
-      privacySettings: m.privacySettings,
-    })) || [];
-
-    // Add calculated age and transformed media
-    return {
-      ...profile,
-      media: transformedMedia,
-      isVerified: profile.isVerified,
-      isActive: true,
-      age: calculateAge(profile.dateOfBirth),
-      matchStatus, // Added to response
-    };
+    return wrapProfileResponse(profile);
   } catch (error) {
     logger.error('Error in getProfileByUserId:', error);
-    logger.error('Error stack:', error.stack); // Add stack trace
-    logger.error('Error details:', { userId, currentUserId, message: error.message }); // Add context
     if (error instanceof ApiError) throw error;
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, `Error retrieving profile: ${error.message}`);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error retrieving profile');
   }
 };
 
-/**
- * Update profile
- * @param {string} userId - User ID
- * @param {Object} data - Update data (validated and safe)
- * @returns {Promise<Object>}
- */
+export const getProfileContactInfo = async (viewerId, profileOwnerId) => {
+  try {
+    return await contactVisibilityService.getContactInfoIfAllowed(viewerId, profileOwnerId);
+  } catch (error) {
+    logger.error('Error in getProfileContactInfo:', error);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error retrieving contact info');
+  }
+};
+
 export const updateProfile = async (userId, data) => {
   try {
-    // eslint-disable-next-line no-unused-vars
-    const { intercasteAllowed, ...validData } = data; // Strip unsupported fields before Prisma update
+    const profileData = sanitizeProfileInput(data);
 
-    const updatedProfile = await prisma.profile.update({
+    await prisma.profile.update({
       where: { userId },
-      data: validData,
+      data: profileData,
     });
 
-    // Recalculate and update completeness score
-    const score = await updateProfileCompleteness(prisma, userId);
-    updatedProfile.profileCompleteness = score;
+    await updateProfileCompleteness(prisma, userId);
+
+    const updatedProfile = await getProfileRecordByUserId(userId);
 
     logger.info(`Profile updated for user: ${userId}`);
-
-    return {
-      ...updatedProfile,
-      age: calculateAge(updatedProfile.dateOfBirth),
-    };
+    return wrapProfileResponse(updatedProfile);
   } catch (error) {
     logger.error('Error in updateProfile:', error);
+    if (error instanceof ApiError) throw error;
     throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error updating profile');
   }
 };
 
-/**
- * Delete profile
- * @param {string} userId - User ID
- * @returns {Promise<void>}
- */
 export const deleteProfile = async (userId) => {
   try {
     await prisma.profile.delete({
@@ -199,15 +203,10 @@ export const deleteProfile = async (userId) => {
   }
 };
 
-/**
- * Search/filter profiles with optional type-based algorithms
- * @param {Object} query - Search parameters
- * @param {number} currentUserId - ID of requesting user
- * @returns {Promise<Object>}
- */
 export const searchProfiles = async (query, currentUserId = null) => {
   try {
-    const { page, limit, skip } = getPaginationParams(query);
+    const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 50);
+    const cursor = Math.max(Number(query.cursor) || 0, 0);
     const {
       gender,
       minAge,
@@ -220,7 +219,6 @@ export const searchProfiles = async (query, currentUserId = null) => {
       nativeVillage,
       speaksChhattisgarhi,
       category,
-      // NEW FILTERS
       education,
       income,
       annualIncome,
@@ -234,215 +232,154 @@ export const searchProfiles = async (query, currentUserId = null) => {
       diet,
       smokingHabit,
       drinkingHabit,
-      // SECTION TYPE - featured, new, recommended
       type,
+      search,
     } = query;
 
     const where = {
       isPublished: true,
+      profileCompleteness: { gte: 50 },
       user: {
         isActive: true,
         isBanned: false,
-      }
+      },
     };
 
-    // ADDED: Auto-filter by opposite gender if user is logged in
     if (currentUserId) {
       const blockedIds = Array.from(await blockService.getAllBlockedUserIds(currentUserId));
       blockedIds.push(currentUserId);
       where.userId = { notIn: blockedIds };
 
-      // Get current user's gender and filter opposite
-      if (!gender) { // Only auto-filter if gender not explicitly provided
+      if (!gender) {
         const currentUserProfile = await prisma.profile.findUnique({
           where: { userId: currentUserId },
           select: { gender: true },
         });
 
         if (currentUserProfile?.gender) {
-          // Filter opposite gender: Male sees Female, Female sees Male
           where.gender = currentUserProfile.gender === 'MALE' ? 'FEMALE' : 'MALE';
         }
       }
     }
 
     if (gender) where.gender = gender;
-
-    // Marital Status - Support comma-separated string or array
-    if (maritalStatus) {
-      const statuses = typeof maritalStatus === 'string'
-        ? maritalStatus.split(',').map(s => s.trim().toUpperCase().replace(/ /g, '_'))
-        : maritalStatus;
-      if (statuses.length === 1) {
-        where.maritalStatus = statuses[0];
-      } else if (statuses.length > 1) {
-        where.maritalStatus = { in: statuses };
-      }
-    }
-
+    if (maritalStatus) where.maritalStatus = maritalStatus;
     if (nativeVillage) where.nativeVillage = { contains: nativeVillage, mode: 'insensitive' };
-    if (speaksChhattisgarhi !== undefined) where.speaksChhattisgarhi = speaksChhattisgarhi === 'true' || speaksChhattisgarhi === true;
-    if (category) where.category = { equals: category, mode: 'insensitive' }; // ADDED
-
-
-    // Religion - Support comma-separated string or array
-    if (religions) {
-      const religionList = typeof religions === 'string' ? religions.split(',').map(r => r.trim().toUpperCase()) : religions;
-      if (religionList.length > 0) {
-        where.religion = { in: religionList };
-      }
-    }
-
-    // Caste - Support comma-separated string or array
-    if (castes) {
-      const casteList = typeof castes === 'string' ? castes.split(',').map(c => c.trim()) : castes;
-      if (casteList.length > 0) {
-        where.caste = { in: casteList, mode: 'insensitive' };
-      }
-    }
-
-    // Height filters (in cm)
-    if (minHeight) where.height = { ...where.height, gte: parseFloat(minHeight) };
-    if (maxHeight) where.height = { ...where.height, lte: parseFloat(maxHeight) };
-
-    // Age filter via DOB calculation
-    if (minAge || maxAge) {
-      const today = new Date();
-      where.dateOfBirth = {};
-      if (minAge) {
-        const maxDOB = new Date(today.getFullYear() - parseInt(minAge), today.getMonth(), today.getDate());
-        where.dateOfBirth.lte = maxDOB;
-      }
-      if (maxAge) {
-        const minDOB = new Date(today.getFullYear() - parseInt(maxAge) - 1, today.getMonth(), today.getDate());
-        where.dateOfBirth.gte = minDOB;
-      }
-    }
-
-    if (education && education !== 'Any') {
-      where.education = { contains: education, mode: 'insensitive' };
-    }
-
+    if (typeof speaksChhattisgarhi === 'boolean') where.speaksChhattisgarhi = speaksChhattisgarhi;
+    if (category) where.category = { equals: category, mode: 'insensitive' };
     if (city) where.city = { contains: city, mode: 'insensitive' };
     if (state) where.state = { contains: state, mode: 'insensitive' };
     if (occupation) where.occupation = { contains: occupation, mode: 'insensitive' };
     if (motherTongue) where.motherTongue = motherTongue.toUpperCase();
-    if (manglik !== undefined) where.manglik = manglik === 'true' || manglik === true;
+    if (typeof manglik === 'boolean') where.manglik = manglik;
     if (diet) where.diet = diet;
     if (smokingHabit) where.smokingHabit = smokingHabit;
     if (drinkingHabit) where.drinkingHabit = drinkingHabit;
+    if (typeof isVerified === 'boolean') where.isVerified = isVerified;
 
-    // NEW: Income/AnnualIncome filter
-    const incomeValue = income || annualIncome;
-    if (incomeValue && incomeValue !== 'Any') {
-      // Parse income ranges like "3-6 LPA", "10-15 LPA", "25+ LPA"
-      if (incomeValue.includes('+')) {
-        // "25+ LPA" means >= 25
-        where.annualIncome = { contains: incomeValue.replace('+', ''), mode: 'insensitive' };
-      } else {
-        where.annualIncome = { contains: incomeValue, mode: 'insensitive' };
+    if (religions?.length) {
+      where.religion = { in: religions.map((item) => item.toUpperCase()) };
+    }
+
+    if (castes?.length) {
+      where.caste = { in: castes };
+    }
+
+    if (minHeight) where.height = { ...where.height, gte: Number(minHeight) };
+    if (maxHeight) where.height = { ...where.height, lte: Number(maxHeight) };
+
+    if (minAge || maxAge) {
+      const today = new Date();
+      where.dateOfBirth = {};
+
+      if (minAge) {
+        where.dateOfBirth.lte = new Date(
+          today.getFullYear() - Number(minAge),
+          today.getMonth(),
+          today.getDate()
+        );
+      }
+
+      if (maxAge) {
+        where.dateOfBirth.gte = new Date(
+          today.getFullYear() - Number(maxAge) - 1,
+          today.getMonth(),
+          today.getDate()
+        );
       }
     }
 
-    // NEW: Is Verified filter
-    if (isVerified !== undefined) {
-      where.isVerified = isVerified === 'true' || isVerified === true;
-    }
-
-    // === TYPE-BASED ALGORITHMS ===
-    let orderBy = [{ user: { role: 'desc' } }]; // Default: Premium first
-
-    if (type === 'featured') {
-      // FEATURED: Premium users with high profile completeness and photos
-      // Algorithm: Premium first, then by completeness, must have photos
-      where.profileCompleteness = { gte: 60 };
-      where.media = { some: { type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] } } };
-      orderBy = [
-        { user: { role: 'desc' } },           // Premium first
-        { profileCompleteness: 'desc' },       // Then by completeness
-        { viewCount: 'desc' },                 // Then by popularity
-      ];
-    } else if (type === 'new' || type === 'justJoined') {
-      // NEW/JUST JOINED: Profiles created in last 7 days
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      where.createdAt = { gte: sevenDaysAgo };
-      orderBy = [
-        { createdAt: 'desc' },                 // Newest first
-        { profileCompleteness: 'desc' },       // Then by completeness
-      ];
-    } else if (type === 'recommended') {
-      // RECOMMENDED: Matching partner preferences (if available)
-      // For now: profiles with high completeness ordered by interaction potential
-      orderBy = [
-        { profileCompleteness: 'desc' },       // Most complete profiles
-        { viewCount: 'desc' },                 // Popular profiles
-        { user: { role: 'desc' } },            // Premium users
+    if (education && education !== 'Any') {
+      where.OR = [
+        ...(where.OR || []),
+        { highestEducation: { equals: education, mode: 'insensitive' } },
+        { educationDetails: { contains: education, mode: 'insensitive' } },
+        { collegeName: { contains: education, mode: 'insensitive' } },
       ];
     }
 
-    // Base query options
-    const queryOptions = {
-      where,
-      skip,
-      take: limit,
-      include: {
-        user: { select: { id: true, role: true } },
-        media: {
-          where: { type: 'PROFILE_PHOTO' },
-          include: { privacySettings: true }
-        },
-      },
-      orderBy,
-    };
+    const incomeValue = income || annualIncome;
+    if (incomeValue && incomeValue !== 'Any') {
+      where.annualIncome = { contains: incomeValue.replace('+', ''), mode: 'insensitive' };
+    }
 
-    // NEW: With Photo filter - only include profiles with at least one photo
-    if (withPhoto === 'true' || withPhoto === true) {
-      queryOptions.where.media = {
+    if (withPhoto) {
+      where.media = {
         some: {
-          type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] }
-        }
+          type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+        },
       };
     }
 
-    const [profiles, total] = await Promise.all([
-      prisma.profile.findMany(queryOptions),
+    if (search) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { profileId: { contains: search, mode: 'insensitive' } },
+            { city: { contains: search, mode: 'insensitive' } },
+            { caste: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    let orderBy = [{ profileCompleteness: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
+
+    if (type === 'featured') {
+      where.profileCompleteness = { gte: 70 };
+      where.media = {
+        some: {
+          type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+        },
+      };
+      orderBy = [{ viewCount: 'desc' }, { profileCompleteness: 'desc' }, { id: 'desc' }];
+    } else if (type === 'new' || type === 'justJoined') {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      where.createdAt = { gte: sevenDaysAgo };
+      orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
+    } else if (type === 'recommended') {
+      orderBy = [{ profileCompleteness: 'desc' }, { viewCount: 'desc' }, { id: 'desc' }];
+    }
+
+    const [profiles, totalCount] = await Promise.all([
+      prisma.profile.findMany({
+        where,
+        skip: cursor,
+        take: limit,
+        include: profileSearchInclude,
+        orderBy,
+      }),
       prisma.profile.count({ where }),
     ]);
 
-    // OPTIMIZED: Fetch all relevant match requests in ONE query instead of N queries
-    let matchRequests = [];
-    if (currentUserId && profiles.length > 0) {
-      const profileUserIds = profiles.map(p => p.userId);
-      matchRequests = await prisma.matchRequest.findMany({
-        where: {
-          OR: [
-            { senderId: currentUserId, receiverId: { in: profileUserIds } },
-            { senderId: { in: profileUserIds }, receiverId: currentUserId },
-          ],
-        },
-        select: { senderId: true, receiverId: true, status: true },
-      });
-    }
-
-    // Map match requests for quick lookup
-    const matchMap = new Map();
-    matchRequests.forEach(mr => {
-      const otherId = mr.senderId === currentUserId ? mr.receiverId : mr.senderId;
-      matchMap.set(otherId, mr.status);
-    });
-
-    const profilesWithAge = profiles.map((profile) => ({
-      ...profile,
-      age: calculateAge(profile.dateOfBirth),
-      matchStatus: matchMap.get(profile.userId) || null,
-    }));
-
-    const pagination = getPaginationMetadata(page, limit, total);
-
     return {
-      profiles: profilesWithAge,
-      pagination,
+      profiles: profiles.map(serializeProfile),
+      totalCount,
+      nextCursor: cursor + profiles.length < totalCount ? String(cursor + profiles.length) : null,
     };
   } catch (error) {
     logger.error('Error in searchProfiles:', error);
@@ -451,13 +388,6 @@ export const searchProfiles = async (query, currentUserId = null) => {
   }
 };
 
-/**
- * Add photo URL to Media table
- * @param {string} userId - User ID
- * @param {Object} mediaData - { url, thumbnailUrl, key, ... } from uploadService
- * @param {string} mediaType - e.g., 'PROFILE_PHOTO'
- * @returns {Promise<Object>}
- */
 export const addPhoto = async (userId, mediaData, mediaType) => {
   try {
     const profile = await prisma.profile.findUnique({
@@ -468,42 +398,33 @@ export const addPhoto = async (userId, mediaData, mediaType) => {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
     }
 
-    // --- MODIFICATION [ADDED] ---
-    // Create Media and its PhotoPrivacySettings in a transaction
     const newMedia = await prisma.$transaction(async (tx) => {
-      // 1. Create the Media object
       const media = await tx.media.create({
         data: {
-          userId: userId,
+          userId,
           profileId: profile.id,
           type: mediaType,
           url: mediaData.url,
           thumbnailUrl: mediaData.thumbnailUrl,
-          fileName: mediaData.fileName, // Corrected from filename
+          fileName: mediaData.fileName,
           fileSize: mediaData.fileSize,
           mimeType: mediaData.mimeType,
-          // TODO: Add logic for isDefault
         },
       });
 
-      // 2. Create the default PhotoPrivacySettings for this media
       await tx.photoPrivacySettings.create({
         data: {
           mediaId: media.id,
-          userId: userId,
-          // All other fields will use the @default values from schema.prisma
+          userId,
         },
       });
 
       return media;
     });
-    // --- End Modification ---
 
-    // Recalculate profile completeness
     await updateProfileCompleteness(prisma, userId);
 
     logger.info(`Photo and privacy settings added for user: ${userId}`);
-    // Return the media object (the privacy settings are linked)
     return newMedia;
   } catch (error) {
     logger.error('Error in addPhoto:', error);
@@ -512,12 +433,6 @@ export const addPhoto = async (userId, mediaData, mediaType) => {
   }
 };
 
-/**
- * Remove photo from Media table and R2
- * @param {string} userId - User ID (for verification)
- * @param {number} mediaId - The ID of the media to delete
- * @returns {Promise<void>}
- */
 export const deletePhoto = async (userId, mediaId) => {
   try {
     const media = await prisma.media.findUnique({
@@ -532,11 +447,11 @@ export const deletePhoto = async (userId, mediaId) => {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You are not authorized to delete this photo');
     }
 
-    // 1. Delete from R2
     const key = uploadService.extractKeyFromUrl(media.url);
     if (key) {
       await uploadService.deleteFile(key);
     }
+
     if (media.thumbnailUrl) {
       const thumbKey = uploadService.extractKeyFromUrl(media.thumbnailUrl);
       if (thumbKey) {
@@ -544,14 +459,10 @@ export const deletePhoto = async (userId, mediaId) => {
       }
     }
 
-    // 2. Delete from database
-    // The `onDelete: Cascade` in Prisma schema for PhotoPrivacySettings
-    // ensures that the privacy settings are automatically deleted when the media is deleted.
     await prisma.media.delete({
       where: { id: mediaId },
     });
 
-    // 3. Recalculate profile completeness
     await updateProfileCompleteness(prisma, userId);
 
     logger.info(`Photo deleted: ${mediaId} by user: ${userId}`);
@@ -565,6 +476,7 @@ export const deletePhoto = async (userId, mediaId) => {
 export const profileService = {
   createProfile,
   getProfileByUserId,
+  getProfileContactInfo,
   updateProfile,
   deleteProfile,
   searchProfiles,

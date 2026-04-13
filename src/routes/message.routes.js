@@ -23,6 +23,12 @@ router.get('/conversations', messageController.getAllConversations);
 
 router.get('/unread-count', messageController.getUnreadCount);
 
+router.get(
+  '/eligibility/:userId',
+  validate(conversationParamsSchema),
+  messageController.getChatEligibility
+);
+
 
 router.get(
   '/:userId',

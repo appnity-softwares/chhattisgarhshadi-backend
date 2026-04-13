@@ -10,6 +10,7 @@ import {
   recentQuerySchema,
   userIdParamSchema,
   updateUserRoleSchema,
+  getPaymentsSchema,
   getReportsSchema,
   reportIdParamSchema,
   updateReportSchema,
@@ -103,6 +104,11 @@ router.get(
   '/matches/recent',
   validate(recentQuerySchema),
   adminController.getRecentMatches
+);
+router.get(
+  '/payments',
+  validate(getPaymentsSchema),
+  adminController.getPayments
 );
 
 // --- Dashboard & System ---

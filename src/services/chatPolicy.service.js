@@ -1,58 +1,124 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, MATCH_STATUS } from '../utils/constants.js';
-import { blockService } from './block.service.js';
+import { HTTP_STATUS } from '../utils/constants.js';
+import relationshipService from './relationship.service.js';
+import { getUserAccess } from './access.service.js';
 
 /**
- * Check if two users are allowed to chat.
- * Rules:
- * - Must not be blocked in either direction
- * - Must have ACCEPTED match request OR APPROVED contact request
+ * Chat Policy Service
+ * Enforces chat eligibility based on plan-based feature rules
  */
+
+export const getChatEligibility = async (senderId, receiverId) => {
+    const [relationship, access] = await Promise.all([
+        relationshipService.getRelationship(senderId, receiverId),
+        getUserAccess(senderId)
+    ]);
+
+    if (!access) {
+        throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'User access data not found');
+    }
+
+    if (relationship.status === 'blocked') {
+        return {
+            canChat: false,
+            reason: 'blocked',
+            requiresMatchToChat: access.requiresMatchToChat,
+            relationshipStatus: relationship.status,
+        };
+    }
+
+    // 1. Check if match is required and exists
+    const isMatched = relationship.status === 'accepted';
+    if (access.requiresMatchToChat && !isMatched) {
+        return {
+            canChat: false,
+            reason: 'match_required',
+            requiresMatchToChat: true,
+            relationshipStatus: relationship.status,
+        };
+    }
+
+    // 2. Check daily message limits
+    if (access.messageLimitPerDay !== -1) {
+        const dateKey = new Date().toISOString().split('T')[0];
+        const usage = await prisma.dailyUsage.findUnique({
+            where: {
+                userId_date: {
+                    userId: senderId,
+                    date: dateKey,
+                },
+            },
+        });
+
+        const messagesUsed = usage?.messagesCount || 0;
+        if (messagesUsed >= access.messageLimitPerDay) {
+            return {
+                canChat: false,
+                reason: 'limit_reached',
+                limit: access.messageLimitPerDay,
+                used: messagesUsed,
+                requiresMatchToChat: access.requiresMatchToChat,
+                relationshipStatus: relationship.status,
+            };
+        }
+    }
+
+    // 3. Check if user can initiate chat if this is the first message
+    const conversation = await prisma.conversation.findFirst({
+        where: {
+            OR: [
+                { userAId: senderId, userBId: receiverId },
+                { userAId: receiverId, userBId: senderId }
+            ]
+        }
+    });
+
+    // If no conversation exists yet, this is an initiation attempt
+    if (!conversation && !access.canInitiateChat) {
+        // If they are NOT matched, they definitely cannot initiate if their plan doesn't allow it
+        if (!isMatched) {
+            return {
+                canChat: false,
+                reason: 'cannot_initiate',
+                requiresMatchToChat: access.requiresMatchToChat,
+                relationshipStatus: relationship.status,
+            };
+        }
+        
+        // If matched, we allow initiation regardless of the canInitiateChat flag.
+        // This prevents the "deadlock" where two matched basic users can't talk.
+    }
+
+    return {
+        canChat: true,
+        access,
+        relationshipStatus: relationship.status,
+    };
+};
+
 export const assertCanChat = async (senderId, receiverId) => {
-  if (senderId === receiverId) {
-    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Cannot chat with yourself');
-  }
+    const eligibility = await getChatEligibility(senderId, receiverId);
 
-  // Block check (both directions)
-  const blockedIdSet = await blockService.getAllBlockedUserIds(senderId);
-  if (blockedIdSet.has(receiverId)) {
-    throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot message this user');
-  }
+    if (!eligibility.canChat) {
+        let message = 'You cannot message this user';
+        if (eligibility.reason === 'match_required') {
+            message = 'Chat is available only after a mutual match';
+        } else if (eligibility.reason === 'limit_reached') {
+            message = `Daily message limit of ${eligibility.limit} reached. Upgrade for more.`;
+        } else if (eligibility.reason === 'cannot_initiate' || eligibility.reason === 'cannot_initiate_conversation') {
+            message = 'Upgrade to Premium to initiate conversations.';
+        }
 
-  const match = await prisma.matchRequest.findFirst({
-    where: {
-      status: MATCH_STATUS.ACCEPTED,
-      OR: [
-        { senderId, receiverId },
-        { senderId: receiverId, receiverId: senderId },
-      ],
-    },
-    select: { id: true },
-  });
+        throw new ApiError(HTTP_STATUS.FORBIDDEN, message, eligibility);
+    }
 
-  if (!match) {
-    throw new ApiError(
-      HTTP_STATUS.FORBIDDEN,
-      'Chat is available only after interest is accepted'
-    );
-  }
-
-  return { isMatched: Boolean(match) };
+    return eligibility;
 };
 
-export const isMatched = async (userId, otherUserId) => {
-  const match = await prisma.matchRequest.findFirst({
-    where: {
-      status: MATCH_STATUS.ACCEPTED,
-      OR: [
-        { senderId: userId, receiverId: otherUserId },
-        { senderId: otherUserId, receiverId: userId },
-      ],
-    },
-    select: { id: true },
-  });
-  return Boolean(match);
+export const chatPolicyService = {
+    assertCanChat,
+    getChatEligibility,
 };
 
-export const chatPolicyService = { assertCanChat, isMatched };
+export default chatPolicyService;
