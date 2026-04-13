@@ -60,7 +60,7 @@ const transformMedia = (media = []) =>
     createdAt: item.createdAt,
   }));
 
-const serializeProfile = (profile) => {
+const serializeProfile = (profile, isShortlisted = false) => {
   if (!profile) return null;
 
   return {
@@ -76,11 +76,12 @@ const serializeProfile = (profile) => {
     media: transformMedia(profile.media),
     age: calculateAge(profile.dateOfBirth),
     profileCompleteness: profile.profileCompleteness || 0,
+    isShortlisted,
   };
 };
 
-const wrapProfileResponse = (profile) => {
-  const serializedProfile = serializeProfile(profile);
+const wrapProfileResponse = (profile, isShortlisted = false) => {
+  const serializedProfile = serializeProfile(profile, isShortlisted);
 
   return {
     profile: serializedProfile,
@@ -150,7 +151,15 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
     }
 
-    return wrapProfileResponse(profile);
+    let isShortlisted = false;
+    if (currentUserId) {
+      const shortlist = await prisma.shortlist.findFirst({
+        where: { userId: currentUserId, shortlistedUserId: userId },
+      });
+      isShortlisted = !!shortlist;
+    }
+
+    return wrapProfileResponse(profile, isShortlisted);
   } catch (error) {
     logger.error('Error in getProfileByUserId:', error);
     if (error instanceof ApiError) throw error;
@@ -376,10 +385,23 @@ export const searchProfiles = async (query, currentUserId = null) => {
       prisma.profile.count({ where }),
     ]);
 
+    let shortlistedIds = new Set();
+    if (currentUserId) {
+      const shortlists = await prisma.shortlist.findMany({
+        where: {
+          userId: currentUserId,
+          shortlistedUserId: { in: profiles.map((p) => p.userId) },
+        },
+        select: { shortlistedUserId: true },
+      });
+      shortlistedIds = new Set(shortlists.map((s) => s.shortlistedUserId));
+    }
+
     return {
-      profiles: profiles.map(serializeProfile),
+      profiles: profiles.map((p) => serializeProfile(p, shortlistedIds.has(p.userId))),
       totalCount,
-      nextCursor: cursor + profiles.length < totalCount ? String(cursor + profiles.length) : null,
+      nextCursor:
+        cursor + profiles.length < totalCount ? String(cursor + profiles.length) : null,
     };
   } catch (error) {
     logger.error('Error in searchProfiles:', error);
