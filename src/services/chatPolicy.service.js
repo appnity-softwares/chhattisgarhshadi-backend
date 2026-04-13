@@ -1,8 +1,7 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, MATCH_STATUS, USER_ROLES } from '../utils/constants.js';
+import { HTTP_STATUS, MATCH_STATUS } from '../utils/constants.js';
 import { blockService } from './block.service.js';
-import { logger } from '../config/logger.js';
 
 /**
  * Check if two users are allowed to chat.
@@ -19,24 +18,6 @@ export const assertCanChat = async (senderId, receiverId) => {
   const blockedIdSet = await blockService.getAllBlockedUserIds(senderId);
   if (blockedIdSet.has(receiverId)) {
     throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot message this user');
-  }
-
-  // Match Eligibility Check
-  // PREMIUM OVERRIDE: If the sender is a premium user, they bypass the match requirement
-  const sender = await prisma.user.findUnique({
-    where: { id: senderId },
-    include: { 
-      subscriptions: {
-        where: { status: 'ACTIVE', endDate: { gt: new Date() } }
-      }
-    }
-  });
-
-  const isPremium = sender?.role === USER_ROLES.PREMIUM_USER || (sender?.subscriptions && sender.subscriptions.length > 0);
-
-  if (isPremium) {
-    logger.info(`Premium user ${senderId} bypassing match check to message ${receiverId}`);
-    return { isPremium: true, isMatched: false }; // Still let caller know it's a premium bypass
   }
 
   const match = await prisma.matchRequest.findFirst({

@@ -141,23 +141,7 @@ export const sendMatchRequest = async (fromUserId, receiverId, message) => {
     });
 
     if (existingMatch) {
-      // If the match is already ACCEPTED, we can't send another one
-      if (existingMatch.status === MATCH_STATUS.ACCEPTED) {
-        throw new ApiError(HTTP_STATUS.CONFLICT, 'You are already matched with this user');
-      }
-      
-      // If the match is PENDING, we can't send another one
-      if (existingMatch.status === MATCH_STATUS.PENDING) {
-        throw new ApiError(HTTP_STATUS.CONFLICT, 'Match request is already pending');
-      }
-
-      // If the match was REJECTED, CANCELLED or EXPIRED, we can allow re-sending
-      // by deleting the old record first
-      await prisma.matchRequest.delete({
-        where: { id: existingMatch.id }
-      });
-      
-      logger.info(`Cleaned up old ${existingMatch.status} match request ${existingMatch.id} for new request`);
+      throw new ApiError(HTTP_STATUS.CONFLICT, 'Match request already exists');
     }
 
     const match = await prisma.matchRequest.create({
