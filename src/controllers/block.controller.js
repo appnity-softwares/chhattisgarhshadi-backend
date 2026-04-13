@@ -41,7 +41,7 @@ export const getMyBlockedList = asyncHandler(async (req, res) => {
  */
 export const unblockUser = asyncHandler(async (req, res) => {
   const { blockedId } = req.params;
-  await blockService.unblockUser(req.user.id, blockedId);
+  await blockService.unblockUser(req.user.id, parseInt(blockedId));
   res
     .status(HTTP_STATUS.OK)
     .json(
