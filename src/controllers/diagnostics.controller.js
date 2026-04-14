@@ -130,3 +130,21 @@ export const runDiagnostics = asyncHandler(async (req, res) => {
         new ApiResponse(200, results, 'System diagnostics completed successfully')
     );
 });
+
+/**
+ * Flush Redis Cache (Admin only)
+ */
+export const flushCache = asyncHandler(async (req, res) => {
+    if (!isRedisConnected()) {
+        throw new Error('Redis not connected');
+    }
+    
+    const client = getRedisClient();
+    await client.flushall();
+    
+    logger.warn(`Redis cache flushed successfully by admin: ${req.user.id}`);
+    
+    res.status(200).json(
+        new ApiResponse(200, null, 'Redis cache flushed successfully')
+    );
+});
