@@ -10,8 +10,8 @@ import { HTTP_STATUS } from './constants.js';
  * @returns {number} The parsed integer
  */
 export const parseId = (value, paramName = 'id') => {
-    const num = parseInt(value, 10);
-    if (isNaN(num) || num <= 0) {
+    const num = Number(value);
+    if (!num || isNaN(num) || !Number.isInteger(num) || num <= 0) {
         throw new ApiError(HTTP_STATUS.BAD_REQUEST, `Invalid ${paramName}`);
     }
     return num;
