@@ -302,8 +302,12 @@ const calcCompatibilityScore = (user, target) => {
 
     // Gothram (different is desired in Hindu tradition)
     if (user.gothram && target.gothram && user.gothram.trim().length > 0 && target.gothram.trim().length > 0) {
-        if (user.gothram.trim().toLowerCase() === target.gothram.trim().toLowerCase()) {
-            score += SCORE.SAME_GOTHRAM_PENALTY;
+        const isSameGothra = user.gothram.trim().toLowerCase() === target.gothram.trim().toLowerCase();
+        
+        if (isSameGothra) {
+            // If user explicitly wants strict Gothra filter, apply massive penalty
+            const penalty = user.partnerPreference?.gothraMandatory ? -50 : SCORE.SAME_GOTHRAM_PENALTY;
+            score += penalty;
         } else {
             score += SCORE.DIFFERENT_GOTHRAM;
         }
@@ -569,11 +573,15 @@ export const getDailyRecommendations = async (userId, limit = 20) => {
         }
 
         // --- Caste filter (REQUIRED = hard filter, PREFERRED = soft score) ---
-        if (preferences?.casteMandatory === true) {
+        if (preferences?.casteMandatory === true || preferences?.intercasteAllowed === false) {
             const allowedCastes = [];
+            
+            // If intercaste is NOT allowed, strictly only same caste or explicitly preferred ones
             if (userProfile.caste) allowedCastes.push(userProfile.caste);
+            
             const prefCastes = parseJsonArray(preferences.caste);
             allowedCastes.push(...prefCastes);
+            
             const uniqueCastes = [...new Set(allowedCastes)];
             if (uniqueCastes.length > 0) {
                 hardFilter.caste = { in: uniqueCastes, mode: 'insensitive' };

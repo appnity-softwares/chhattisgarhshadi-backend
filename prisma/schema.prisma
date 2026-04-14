@@ -687,6 +687,8 @@ model PartnerPreference {
   religion       String?  @db.Text // JSON array
   caste          String?  @db.Text
   casteMandatory Boolean? @default(false) // If true, only same/preferred caste matches
+  intercasteAllowed Boolean? @default(false) 
+  gothraMandatory    Boolean? @default(false)
   motherTongue   String?  @db.Text
 
   // Marital Status

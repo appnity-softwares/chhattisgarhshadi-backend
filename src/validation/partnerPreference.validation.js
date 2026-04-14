@@ -48,6 +48,11 @@ export const upsertPreferenceSchema = z.object({
 
     // Horoscope
     manglik: z.boolean().optional().nullable(),
+    gothraMandatory: z.boolean().optional().nullable(),
+
+    // Caste rules
+    casteMandatory: z.boolean().optional().nullable(),
+    intercasteAllowed: z.boolean().optional().nullable(),
 
     // Other
     description: z.string().max(1000).optional().nullable(),
