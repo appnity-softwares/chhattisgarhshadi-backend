@@ -2,6 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { agentService } from '../services/agent.service.js';
 import { HTTP_STATUS } from '../utils/constants.js';
+import { parseId } from '../utils/parseId.js';
 
 /**
  * [Admin] Create a new agent
@@ -31,7 +32,7 @@ export const getAllAgents = asyncHandler(async (req, res) => {
  * [Admin] Get a single agent by ID
  */
 export const getAgentById = asyncHandler(async (req, res) => {
-  const agent = await agentService.getAgentById(req.params.agentId);
+  const agent = await agentService.getAgentById(parseId(req.params.agentId, 'agentId'));
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, agent, 'Agent retrieved successfully'));
@@ -42,7 +43,7 @@ export const getAgentById = asyncHandler(async (req, res) => {
  */
 export const updateAgent = asyncHandler(async (req, res) => {
   const updatedAgent = await agentService.updateAgent(
-    req.params.agentId,
+    parseId(req.params.agentId, 'agentId'),
     req.body
   );
   res
@@ -56,7 +57,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
  * [Admin] Delete an agent (Soft Delete)
  */
 export const deleteAgent = asyncHandler(async (req, res) => {
-  await agentService.deleteAgent(req.params.agentId);
+  await agentService.deleteAgent(parseId(req.params.agentId, 'agentId'));
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, null, 'Agent deleted successfully'));
