@@ -204,7 +204,6 @@ export const sendMessage = async (
     const limit = eligibility.access.messageLimitPerDay;
     const planTypeStr = !eligibility.access.isPremium ? "free" : (limit === -1 ? "premium_pro" : "premium_basic");
     const remainingMessages = limit === -1 ? 999999 : Math.max(0, limit - messagesUsed);
-    const isMatched = eligibility.relationshipStatus === 'accepted';
 
     logger.info(`Message sent from ${senderId} to ${receiverId}`);
     return { 
