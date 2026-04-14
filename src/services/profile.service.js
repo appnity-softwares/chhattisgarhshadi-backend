@@ -1,6 +1,6 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, ERROR_MESSAGES } from '../utils/constants.js';
+import { HTTP_STATUS, ERROR_MESSAGES, PROFILE_VISIBILITY } from '../utils/constants.js';
 import { calculateAge } from '../utils/helpers.js';
 import { updateProfileCompleteness } from '../utils/profile.helpers.js';
 import { logger } from '../config/logger.js';
@@ -149,6 +149,17 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
 
     if (!profile) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
+    }
+
+    // SECURITY: Enforce profile visibility privacy settings
+    // Hidden profiles are invisible to everyone except the owner
+    if (currentUserId && userId !== currentUserId) {
+      const privacySettings = await prisma.profilePrivacySettings.findUnique({
+        where: { userId },
+      });
+      if (privacySettings?.profileVisibility === PROFILE_VISIBILITY.HIDDEN) {
+        throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
+      }
     }
 
     let isShortlisted = false;

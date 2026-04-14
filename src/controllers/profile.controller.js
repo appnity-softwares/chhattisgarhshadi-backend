@@ -4,6 +4,7 @@ import { profileService } from '../services/profile.service.js';
 import matchingAlgorithmService from '../services/matchingAlgorithm.service.js';
 import { HTTP_STATUS, SUCCESS_MESSAGES } from '../utils/constants.js';
 import { cacheHelper } from '../utils/cache.helper.js';
+import { blockService } from '../services/block.service.js';
 
 /**
  * Create profile
@@ -33,13 +34,27 @@ export const getMyProfile = asyncHandler(async (req, res) => {
 
 /**
  * Get profile by user ID
+ * Security: Block check runs BEFORE cache to prevent bypass
  */
 export const getProfileByUserId = asyncHandler(async (req, res) => {
   // Convert userId to integer (route params are always strings)
   const userId = parseInt(req.params.userId, 10);
+  const currentUserId = req.user?.id;
+
+  // SECURITY: Check blocks BEFORE cache — cache key doesn't include viewer
+  if (currentUserId && userId !== currentUserId) {
+    const blockedIdSet = await blockService.getAllBlockedUserIds(currentUserId);
+    if (blockedIdSet.has(userId)) {
+      return res
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json(new ApiResponse(HTTP_STATUS.NOT_FOUND, null, 'Profile not found'));
+    }
+  }
+
+  // Cache the profile data (viewer-independent data only)
   const profile = await cacheHelper.getOrFetch(
     `profile:userId:${userId}`,
-    async () => await profileService.getProfileByUserId(userId, req.user?.id),
+    async () => await profileService.getProfileByUserId(userId, currentUserId),
     3600 // 1 hour
   );
   res
