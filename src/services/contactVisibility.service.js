@@ -72,65 +72,87 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
 };
 
 export const getContactInfoIfAllowed = async (viewerId, profileOwnerId) => {
-  const visibility = await canViewContactInfo(viewerId, profileOwnerId);
+  try {
+    const visibility = await canViewContactInfo(viewerId, profileOwnerId);
 
-  if (!visibility.canView) {
-    return {
-      allowed: false,
-      reason: visibility.reason,
-      message: getVisibilityMessage(visibility.reason),
-      contactInfo: null,
-    };
-  }
-
-  const viewer = await prisma.user.findUnique({
-    where: { id: viewerId },
-    select: getViewerSelect(),
-  });
-
-  const owner = await prisma.user.findUnique({
-    where: { id: profileOwnerId },
-    select: ownerContactSelect,
-  });
-
-  if (!owner) {
-    return {
-      allowed: false,
-      reason: 'profile_not_found',
-      message: 'Profile not found',
-      contactInfo: null,
-    };
-  }
-
-  const activeSubscription = viewer?.subscriptions?.[0] || null;
-  const hasUnlimitedAccess = viewer ? hasUnlimitedPremiumRole(viewer) : false;
-
-  if (
-    visibility.reason === 'premium_access' &&
-    activeSubscription &&
-    !hasUnlimitedAccess &&
-    activeSubscription.plan?.maxContactViews > 0
-  ) {
-    const maxViews = activeSubscription.plan.maxContactViews;
-    const remainingViews = maxViews - activeSubscription.contactViewsUsed;
-
-    if (remainingViews <= 0) {
+    if (!visibility.canView) {
       return {
         allowed: false,
-        reason: 'contact_limit_reached',
-        message: `You have used all ${maxViews} contact views in your plan.`,
+        reason: visibility.reason,
+        message: getVisibilityMessage(visibility.reason),
         contactInfo: null,
-        remainingViews: 0,
+      };
+    }
+
+    const viewer = await prisma.user.findUnique({
+      where: { id: viewerId },
+      select: getViewerSelect(),
+    });
+
+    const owner = await prisma.user.findUnique({
+      where: { id: profileOwnerId },
+      select: ownerContactSelect,
+    });
+
+    if (!owner) {
+      return {
+        allowed: false,
+        reason: 'profile_not_found',
+        message: 'Profile not found',
+        contactInfo: null,
+      };
+    }
+
+    const activeSubscription = viewer?.subscriptions?.[0] || null;
+    const hasUnlimitedAccess = viewer ? hasUnlimitedPremiumRole(viewer) : false;
+
+    if (
+      visibility.reason === 'premium_access' &&
+      activeSubscription &&
+      !hasUnlimitedAccess &&
+      activeSubscription.plan?.maxContactViews > 0
+    ) {
+      const maxViews = activeSubscription.plan.maxContactViews;
+      const remainingViews = maxViews - activeSubscription.contactViewsUsed;
+
+      if (remainingViews <= 0) {
+        return {
+          allowed: false,
+          reason: 'contact_limit_reached',
+          message: `You have used all ${maxViews} contact views in your plan.`,
+          contactInfo: null,
+          remainingViews: 0,
+          maxViews,
+        };
+      }
+
+      await prisma.userSubscription.update({
+        where: { id: activeSubscription.id },
+        data: { contactViewsUsed: { increment: 1 } },
+      });
+
+      // Use updateMany to avoid P2025 if profile record is missing
+      await prisma.profile.updateMany({
+        where: { userId: profileOwnerId },
+        data: { contactViewCount: { increment: 1 } },
+      });
+
+      return {
+        allowed: true,
+        reason: visibility.reason,
+        contactInfo: {
+          phone: owner.phone,
+          email: owner.email,
+          alternatePhone: owner.profile?.alternatePhone || null,
+          whatsappNumber: owner.profile?.whatsappNumber || null,
+        },
+        remainingViews: remainingViews - 1,
         maxViews,
       };
     }
 
-    await prisma.userSubscription.update({
-      where: { id: activeSubscription.id },
-      data: { contactViewsUsed: { increment: 1 } },
-    });
-
-    await prisma.profile.update({
+    // Use updateMany to avoid P2025 if profile record is missing
+    await prisma.profile.updateMany({
       where: { userId: profileOwnerId },
       data: { contactViewCount: { increment: 1 } },
     });
@@ -144,26 +166,16 @@ export const getContactInfoIfAllowed = async (viewerId, profileOwnerId) => {
         alternatePhone: owner.profile?.alternatePhone || null,
         whatsappNumber: owner.profile?.whatsappNumber || null,
       },
-      remainingViews: remainingViews - 1,
-      maxViews,
+    };
+  } catch (error) {
+    logger.error('Error in getContactInfoIfAllowed:', error);
+    return {
+      allowed: false,
+      reason: 'error',
+      message: 'Unable to load contact information. Please try again.',
+      contactInfo: null,
     };
   }
-
-  await prisma.profile.update({
-    where: { userId: profileOwnerId },
-    data: { contactViewCount: { increment: 1 } },
-  });
-
-  return {
-    allowed: true,
-    reason: visibility.reason,
-    contactInfo: {
-      phone: owner.phone,
-      email: owner.email,
-      alternatePhone: owner.profile?.alternatePhone || null,
-      whatsappNumber: owner.profile?.whatsappNumber || null,
-    },
-  };
 };
 
 const getVisibilityMessage = (reason) => {
