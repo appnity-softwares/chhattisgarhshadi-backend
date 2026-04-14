@@ -189,7 +189,32 @@ export const getCompatibility = async (userId1, userId2) => {
         prisma.profile.findUnique({ where: { userId: userId2 } }),
     ]);
 
-    return calculateGunaMatch(profile1, profile2);
+    // If either profile doesn't exist, return a safe "no data" response
+    if (!profile1 || !profile2) {
+        return {
+            dataAvailable: false,
+            score: 0, maxScore: TOTAL_GUNAS, percentage: 0,
+            breakdown: [],
+            recommendation: 'Profile not found',
+            canMatch: null,
+            manglikStatus: { compatible: null, message: 'Profile data unavailable' },
+        };
+    }
+
+    // If horoscope data is missing on either side
+    if (!profile1.nakshatra || !profile2.nakshatra) {
+        return {
+            dataAvailable: false,
+            score: 0, maxScore: TOTAL_GUNAS, percentage: 0,
+            breakdown: [],
+            recommendation: 'Horoscope details not available',
+            canMatch: null,
+            manglikStatus: { compatible: null, message: 'Birth details incomplete' },
+        };
+    }
+
+    const result = calculateGunaMatch(profile1, profile2);
+    return { ...result, dataAvailable: true };
 };
 
 /**

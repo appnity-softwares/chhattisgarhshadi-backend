@@ -10,6 +10,7 @@ import {
 } from '../services/astrology.service.js';
 import { logger } from '../config/logger.js';
 import { cacheHelper } from '../utils/cache.helper.js';
+import { parseId } from '../utils/parseId.js';
 
 /**
  * GET /api/v1/astrology/nakshatras
@@ -60,14 +61,7 @@ export const getRashiList = async (req, res) => {
 export const getMatch = async (req, res) => {
     try {
         const userId = req.user.id;
-        const targetUserId = parseInt(req.params.targetUserId);
-
-        if (!targetUserId || isNaN(targetUserId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid target user ID',
-            });
-        }
+        const targetUserId = parseId(req.params.targetUserId, 'targetUserId');
 
         const sortedIds = [userId, targetUserId].sort((a, b) => a - b);
         const cacheKey = `kundali:${sortedIds[0]}:${sortedIds[1]}`;
@@ -83,10 +77,14 @@ export const getMatch = async (req, res) => {
             data: compatibility,
         });
     } catch (error) {
+        // parseId throws ApiError 400 for invalid IDs — let it bubble
+        if (error.statusCode === 400) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
         logger.error('Error getting astrology match:', error);
         return res.status(500).json({
             success: false,
-            message: 'Failed to get astrology match',
+            message: 'Unable to load Kundali report. Please try again.',
         });
     }
 };
