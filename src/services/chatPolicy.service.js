@@ -19,7 +19,8 @@ export const getChatEligibility = async (senderId, receiverId) => {
         throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'User access data not found');
     }
 
-    const dbDateKey = new Date().toISOString().split('T')[0];
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const dbDateKey = new Date(Date.now() + istOffset).toISOString().split('T')[0];
     const _usage = await prisma.dailyUsage.findUnique({
         where: { userId_date: { userId: senderId, date: dbDateKey } },
     });
@@ -56,18 +57,8 @@ export const getChatEligibility = async (senderId, receiverId) => {
     }
 
     // 2. Check daily message limits
-    if (access.messageLimitPerDay !== -1) {
-        const dateKey = new Date().toISOString().split('T')[0];
-        const usage = await prisma.dailyUsage.findUnique({
-            where: {
-                userId_date: {
-                    userId: senderId,
-                    date: dateKey,
-                },
-            },
-        });
-
-        const messagesUsed = usage?.messagesCount || 0;
+    // MATCH OVERRIDE: If matched, skip all daily limit checks!
+    if (access.messageLimitPerDay !== -1 && !isMatched) {
         if (_messagesUsed >= _limit) {
             return {
                 canChat: false,
