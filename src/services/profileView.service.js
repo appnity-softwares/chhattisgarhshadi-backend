@@ -98,9 +98,18 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
       return { ...existingView, alreadyViewed: true }; // View already logged, return without counting
     }
 
-    // --- Create New View Log ---
-    const newView = await prisma.profileView.create({
-      data: {
+    const newView = await prisma.profileView.upsert({
+      where: {
+        viewerId_profileId: {
+          viewerId,
+          profileId,
+        },
+      },
+      update: {
+        viewedAt: new Date(),
+        isAnonymous,
+      },
+      create: {
         viewerId,
         profileId,
         isAnonymous,

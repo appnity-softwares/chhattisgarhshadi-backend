@@ -7,6 +7,8 @@ import { logAdminAction } from '../services/activityLog.service.js';
 import { HTTP_STATUS } from '../utils/constants.js';
 import { ApiError } from '../utils/ApiError.js';
 import jwtUtils from '../utils/jwt.js';
+import bcrypt from 'bcryptjs';
+import prisma from '../config/database.js';
 
 /**
  * [NEW] Admin Login
@@ -14,29 +16,39 @@ import jwtUtils from '../utils/jwt.js';
 export const adminLogin = asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
-  const ADMIN_USER = process.env.ADMIN_USERNAME || 'admin@chshadi.com';
-  const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'Admin@123';
-
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
-    const adminUser = {
-      id: 0, // Hardcoded super admin ID
-      role: 'ADMIN',
-      email: ADMIN_USER
-    };
-
-    const accessToken = jwtUtils.generateAccessToken(adminUser);
-    const refreshToken = jwtUtils.generateRefreshToken(adminUser);
-
-    return res.status(HTTP_STATUS.OK).json(
-      new ApiResponse(HTTP_STATUS.OK, {
-        token: accessToken,
-        refreshToken,
-        user: { email: ADMIN_USER, role: 'ADMIN' }
-      }, 'Admin login successful')
-    );
+  const adminUser = await prisma.admin.findUnique({ where: { email: username } });
+  
+  if (!adminUser || !adminUser.isActive) {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid admin credentials');
   }
 
-  throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid admin credentials');
+  const isPasswordValid = await bcrypt.compare(password, adminUser.password);
+  
+  if (!isPasswordValid) {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid admin credentials');
+  }
+
+  const tokenPayload = {
+    id: adminUser.id,
+    role: adminUser.role,
+    email: adminUser.email
+  };
+
+  const accessToken = jwtUtils.generateAccessToken(tokenPayload);
+  const refreshToken = jwtUtils.generateRefreshToken(tokenPayload);
+
+  await prisma.admin.update({
+    where: { id: adminUser.id },
+    data: { lastLoginAt: new Date() }
+  });
+
+  return res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, {
+      token: accessToken,
+      refreshToken,
+      user: { id: adminUser.id, email: adminUser.email, role: adminUser.role, firstName: adminUser.firstName, lastName: adminUser.lastName }
+    }, 'Admin login successful')
+  );
 });
 
 /**

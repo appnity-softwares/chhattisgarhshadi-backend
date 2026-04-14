@@ -91,7 +91,7 @@ export const createPhotoRequest = async (requesterId, data) => {
     // 7. Send notification to the photo owner
     await notificationService.createNotification({
         userId: ownerId,
-        type: 'PHOTO_VIEW_REQUEST', // TODO: Add this to constants.js
+        type: 'PHOTO_REQUEST',
         title: 'New Photo View Request',
         message: `${requester.profile?.firstName || 'Someone'} has requested to view your photo.`,
         data: { requesterId, photoId, requestId: request.id },
