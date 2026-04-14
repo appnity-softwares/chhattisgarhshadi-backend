@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
@@ -182,6 +184,21 @@ if (process.env.NODE_ENV === 'production') {
 } else {
   app.use(morgan('dev'));
 }
+
+// ============================================
+// ANDROID APP LINKS — Digital Asset Links
+// Must be served at /.well-known/assetlinks.json
+// with Content-Type: application/json, no redirects
+// ============================================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.join(__dirname, '..', 'public');
+
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // 24h cache
+  res.sendFile(path.join(publicDir, '.well-known', 'assetlinks.json'));
+});
 
 // ============================================
 // HEALTH CHECK ENDPOINT - A+ Architecture
