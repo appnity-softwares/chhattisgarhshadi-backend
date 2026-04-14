@@ -48,7 +48,7 @@ export const getReceivedRequests = asyncHandler(async (req, res) => {
  */
 export const respondToRequest = asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const { id } = req.params;
+  const id = parseInt(req.params.id, 10);
   
   const updatedRequest = await photoRequestService.respondToRequest(
     req.user.id,

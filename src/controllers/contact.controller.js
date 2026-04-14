@@ -53,7 +53,7 @@ export const getContactMessages = asyncHandler(async (req, res) => {
  * Handle updating message status (Admin)
  */
 export const updateStatus = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
     const { status } = req.body;
 
     if (!status) {
@@ -76,7 +76,7 @@ export const updateStatus = asyncHandler(async (req, res) => {
  * Handle getting single message (Admin)
  */
 export const getSingleMessage = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
     const message = await contactService.getMessageById(id);
 
     if (!message) {
@@ -96,7 +96,7 @@ export const getSingleMessage = asyncHandler(async (req, res) => {
  * Handle deleting message (Admin)
  */
 export const deleteContactMessage = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
     await contactService.deleteMessage(id);
 
     res.status(200).json({

@@ -39,7 +39,12 @@ export const errorHandler = (err, req, res, next) => {
     switch (err.code) {
       case 'P2002': // Unique constraint violation
         statusCode = HTTP_STATUS.CONFLICT; // 409
-        message = `This ${err.meta?.target?.join(', ')} is already in use.`;
+        // Don't leak DB column names in production
+        if (config.NODE_ENV === 'development') {
+          message = `This ${err.meta?.target?.join(', ')} is already in use.`;
+        } else {
+          message = 'This information is already in use.';
+        }
         break;
       case 'P2025': // Record not found
         statusCode = HTTP_STATUS.NOT_FOUND; // 404
@@ -47,7 +52,7 @@ export const errorHandler = (err, req, res, next) => {
         break;
       default:
         statusCode = HTTP_STATUS.BAD_REQUEST; // 400
-        message = 'Database request error.';
+        message = 'A database error occurred. Please try again.';
         if (config.NODE_ENV === 'development') {
           message = `Prisma Error ${err.code}: ${err.message}`;
         }

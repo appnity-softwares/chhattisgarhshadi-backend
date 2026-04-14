@@ -65,7 +65,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
  * Get user by ID (Admin)
  */
 export const getUserById = asyncHandler(async (req, res) => {
-  const user = await userService.getFullUserById(req.params.userId);
+  const user = await userService.getFullUserById(parseInt(req.params.userId, 10));
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, user, 'User retrieved successfully'));
@@ -76,7 +76,7 @@ export const getUserById = asyncHandler(async (req, res) => {
  */
 export const updateUserRole = asyncHandler(async (req, res) => {
   const { role } = req.body;
-  const { userId } = req.params;
+  const userId = parseInt(req.params.userId, 10);
 
   const user = await userService.updateUserRole(userId, role);
   await logAdminAction(req, 'USER_ROLE_CHANGED', `Changed role of user ${user.email} to ${role}`, { userId, role });
@@ -89,8 +89,9 @@ export const updateUserRole = asyncHandler(async (req, res) => {
  * Delete user (Admin)
  */
 export const deleteUser = asyncHandler(async (req, res) => {
-  await userService.deleteUser(req.params.userId);
-  await logAdminAction(req, 'USER_DELETED', `Deleted user ${req.params.userId}`, { userId: req.params.userId });
+  const userId = parseInt(req.params.userId, 10);
+  await userService.deleteUser(userId);
+  await logAdminAction(req, 'USER_DELETED', `Deleted user ${userId}`, { userId });
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, null, 'User deleted successfully'));
@@ -185,7 +186,7 @@ export const getReports = asyncHandler(async (req, res) => {
  * [NEW] Get a single report by ID (Admin)
  */
 export const getReportById = asyncHandler(async (req, res) => {
-  const report = await adminService.getReportById(req.params.id);
+  const report = await adminService.getReportById(parseInt(req.params.id, 10));
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, report, 'Report retrieved successfully'));
@@ -195,11 +196,12 @@ export const getReportById = asyncHandler(async (req, res) => {
  * [NEW] Update a report's status (Admin)
  */
 export const updateReport = asyncHandler(async (req, res) => {
+  const reportId = parseInt(req.params.id, 10);
   const updatedReport = await adminService.updateReportStatus(
-    req.params.id,
+    reportId,
     req.body
   );
-  await logAdminAction(req, 'REPORT_UPDATED', `Updated report ${req.params.id}`, { reportId: req.params.id, update: req.body });
+  await logAdminAction(req, 'REPORT_UPDATED', `Updated report ${reportId}`, { reportId, update: req.body });
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, updatedReport, 'Report updated successfully'));
@@ -209,7 +211,7 @@ export const updateReport = asyncHandler(async (req, res) => {
  * [NEW] Ban a user (Admin)
  */
 export const banUser = asyncHandler(async (req, res) => {
-  const { userId } = req.params;
+  const userId = parseInt(req.params.userId, 10);
   const { reason } = req.body;
   const user = await userService.banUser(userId, reason, req.user.id);
   await logAdminAction(req, 'USER_BANNED', `Banned user ${user.email} for: ${reason}`, { userId, reason });
@@ -222,7 +224,7 @@ export const banUser = asyncHandler(async (req, res) => {
  * [NEW] Unban a user (Admin)
  */
 export const unbanUser = asyncHandler(async (req, res) => {
-  const { userId } = req.params;
+  const userId = parseInt(req.params.userId, 10);
   const user = await userService.unbanUser(userId);
   await logAdminAction(req, 'USER_UNBANNED', `Unbanned user ${user.email}`, { userId });
   res

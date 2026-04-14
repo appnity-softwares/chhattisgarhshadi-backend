@@ -9,7 +9,7 @@ import { HTTP_STATUS } from '../utils/constants.js';
 export const getMyPhotoSettings = asyncHandler(async (req, res) => {
   const settings = await photoPrivacyService.getPhotoPrivacySettings(
     req.user.id,
-    req.params.mediaId
+    parseInt(req.params.mediaId, 10)
   );
   res
     .status(HTTP_STATUS.OK)
@@ -28,7 +28,7 @@ export const getMyPhotoSettings = asyncHandler(async (req, res) => {
 export const updateMyPhotoSettings = asyncHandler(async (req, res) => {
   const settings = await photoPrivacyService.updatePhotoPrivacySettings(
     req.user.id,
-    req.params.mediaId,
+    parseInt(req.params.mediaId, 10),
     req.body
   );
   res
