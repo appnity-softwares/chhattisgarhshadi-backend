@@ -173,7 +173,7 @@ export const getProfileContactInfo = async (viewerId, profileOwnerId) => {
   } catch (error) {
     logger.error('Error in getProfileContactInfo:', error);
     if (error instanceof ApiError) throw error;
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error retrieving contact info');
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, `Debug Error: ${error.message} - ${error.stack}`);
   }
 };
 

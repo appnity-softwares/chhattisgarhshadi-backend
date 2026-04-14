@@ -10,7 +10,13 @@ const getViewerSelect = () => ({
       status: 'ACTIVE',
       endDate: { gt: new Date() },
     },
-    include: { plan: true },
+    select: {
+      id: true,
+      status: true,
+      endDate: true,
+      contactViewsUsed: true,
+      plan: true,
+    },
     orderBy: { endDate: 'desc' },
   },
 });
