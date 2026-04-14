@@ -30,7 +30,7 @@ export const getUserAccess = async (userId) => {
     const defaultAccess = {
         canChat: true,
         requiresMatchToChat: true,
-        messageLimitPerDay: 5,
+        messageLimitPerDay: 1,
         canInitiateChat: false,
         canSeeProfileVisitors: false,
         priorityListing: false,
@@ -79,7 +79,7 @@ export const getUserAccess = async (userId) => {
         photoLimit: isPremiumTier ? -1 : 5,  // Basic users see 5, Premium unlimited
         
         // Limits & Features read directly from DB Plan object
-        messageLimitPerDay: plan.maxMessagesSend === 0 ? -1 : plan.maxMessagesSend,
+        messageLimitPerDay: isPremiumTier ? -1 : (isBasicTier ? 10 : 1),
         canSeeProfileVisitors: plan.canSeeProfileVisitors || false,
         priorityListing: plan.priorityListing || false,
         verifiedBadge: plan.verifiedBadge || false,

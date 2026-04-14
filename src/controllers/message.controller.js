@@ -16,7 +16,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   const { receiverId, content, contentType = 'TEXT', clientMessageId = null } = req.body; // NEW: contentType param
 
   // The service now returns a message with a "safe" user object
-  const { message, isDuplicate } = await messageService.sendMessage(
+  const { message, isDuplicate, limitsInfo } = await messageService.sendMessage(
     req.user.id,
     receiverId,
     content,
@@ -33,7 +33,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   res
     .status(HTTP_STATUS.CREATED)
     .json(
-      new ApiResponse(HTTP_STATUS.CREATED, message, SUCCESS_MESSAGES.MESSAGE_SENT)
+      new ApiResponse(HTTP_STATUS.CREATED, { message, limitsInfo }, SUCCESS_MESSAGES.MESSAGE_SENT)
     );
 });
 

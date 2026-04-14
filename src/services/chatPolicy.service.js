@@ -19,12 +19,25 @@ export const getChatEligibility = async (senderId, receiverId) => {
         throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'User access data not found');
     }
 
+    const dbDateKey = new Date().toISOString().split('T')[0];
+    const _usage = await prisma.dailyUsage.findUnique({
+        where: { userId_date: { userId: senderId, date: dbDateKey } },
+    });
+    const _messagesUsed = _usage?.messagesCount || 0;
+    const _limit = access.messageLimitPerDay;
+    const _remainingMessages = _limit === -1 ? 999999 : Math.max(0, _limit - _messagesUsed);
+    const _planType = !access.isPremium ? "free" : (_limit === -1 ? "premium_pro" : "premium_basic");
+    const _canSendMessage = _limit === -1 ? true : _messagesUsed < _limit;
+
     if (relationship.status === 'blocked') {
         return {
             canChat: false,
             reason: 'blocked',
             requiresMatchToChat: access.requiresMatchToChat,
             relationshipStatus: relationship.status,
+            messagesRemaining: _remainingMessages,
+            planType: _planType,
+            canSendMessage: _canSendMessage,
         };
     }
 
@@ -36,6 +49,9 @@ export const getChatEligibility = async (senderId, receiverId) => {
             reason: 'match_required',
             requiresMatchToChat: true,
             relationshipStatus: relationship.status,
+            messagesRemaining: _remainingMessages,
+            planType: _planType,
+            canSendMessage: _canSendMessage,
         };
     }
 
@@ -52,14 +68,17 @@ export const getChatEligibility = async (senderId, receiverId) => {
         });
 
         const messagesUsed = usage?.messagesCount || 0;
-        if (messagesUsed >= access.messageLimitPerDay) {
+        if (_messagesUsed >= _limit) {
             return {
                 canChat: false,
                 reason: 'limit_reached',
-                limit: access.messageLimitPerDay,
-                used: messagesUsed,
+                limit: _limit,
+                used: _messagesUsed,
                 requiresMatchToChat: access.requiresMatchToChat,
                 relationshipStatus: relationship.status,
+                messagesRemaining: 0,
+                planType: _planType,
+                canSendMessage: false,
             };
         }
     }
@@ -83,6 +102,9 @@ export const getChatEligibility = async (senderId, receiverId) => {
                 reason: 'cannot_initiate',
                 requiresMatchToChat: access.requiresMatchToChat,
                 relationshipStatus: relationship.status,
+                messagesRemaining: _remainingMessages,
+                planType: _planType,
+                canSendMessage: _canSendMessage,
             };
         }
         
@@ -94,6 +116,9 @@ export const getChatEligibility = async (senderId, receiverId) => {
         canChat: true,
         access,
         relationshipStatus: relationship.status,
+        messagesRemaining: _remainingMessages,
+        planType: _planType,
+        canSendMessage: _canSendMessage,
     };
 };
 

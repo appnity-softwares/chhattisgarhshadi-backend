@@ -193,8 +193,38 @@ export const sendMessage = async (
       }).catch(err => logger.error('Failed to send message notification:', err));
     }
 
+    // Capture limits info for the response
+    const usage = await prisma.dailyUsage.findUnique({
+      where: {
+        userId_date: {
+          userId: senderId,
+          date: new Date().toISOString().split('T')[0], // IST offset applied in getTodayKey usually, let's use the helper
+        },
+      },
+    });
+    // Re-calculating with offset logic native to usageLimits
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const dateKey = new Date(new Date().getTime() + istOffset).toISOString().split('T')[0];
+    const accurateUsage = await prisma.dailyUsage.findUnique({ where: { userId_date: { userId: senderId, date: dateKey } } });
+    
+    // Check remaining using accurate usage + 1 (since it just incremented asynchronously)
+    const storedCount = accurateUsage?.messagesCount || 0;
+    const messagesUsed = storedCount; 
+    
+    const limit = eligibility.access.messageLimitPerDay;
+    const planTypeStr = !eligibility.access.isPremium ? "free" : (limit === -1 ? "premium_pro" : "premium_basic");
+    const remainingMessages = limit === -1 ? 999999 : Math.max(0, limit - messagesUsed);
+
     logger.info(`Message sent from ${senderId} to ${receiverId}`);
-    return { message, isDuplicate: false };
+    return { 
+      message, 
+      isDuplicate: false,
+      limitsInfo: {
+        canSendMessage: limit === -1 ? true : messagesUsed < limit,
+        remainingMessages,
+        planType: planTypeStr
+      }
+    };
   } catch (error) {
     logger.error('Error in sendMessage:', error);
     if (error instanceof ApiError) throw error;
