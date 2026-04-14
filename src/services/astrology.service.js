@@ -203,8 +203,13 @@ export const getCompatibility = async (userId1, userId2) => {
 
     // If horoscope data is missing on either side
     if (!profile1.nakshatra || !profile2.nakshatra) {
+        let missing = 'both';
+        if (profile1.nakshatra && !profile2.nakshatra) missing = 'them';
+        if (!profile1.nakshatra && profile2.nakshatra) missing = 'me';
+
         return {
             dataAvailable: false,
+            missingData: missing,
             score: 0, maxScore: TOTAL_GUNAS, percentage: 0,
             breakdown: [],
             recommendation: 'Horoscope details not available',
