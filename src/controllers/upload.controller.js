@@ -4,12 +4,15 @@ import { ApiError } from '../utils/ApiError.js';
 import { uploadService } from '../services/upload.service.js';
 import { profileService } from '../services/profile.service.js';
 import { HTTP_STATUS, MEDIA_TYPES } from '../utils/constants.js'; // Ensure MEDIA_TYPES is in constants.js
+import { cacheHelper } from '../utils/cache.helper.js';
 
 /**
  * Upload single profile photo
  */
 export const uploadProfilePhoto = asyncHandler(async (req, res) => {
+  console.log('📸 uploadProfilePhoto - req.file:', req.file ? { fieldname: req.file.fieldname, size: req.file.size, mimetype: req.file.mimetype } : null);
   if (!req.file) {
+    console.error('❌ uploadProfilePhoto - No file received! req.headers content-type:', req.headers['content-type']);
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No file uploaded');
   }
 
@@ -36,6 +39,9 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
     MEDIA_TYPES.PROFILE_PHOTO
   );
 
+  // Invalidate profile cache so subsequent fetches include the new photo
+  await cacheHelper.del(`profile:userId:${req.user.id}`);
+
   res
     .status(HTTP_STATUS.OK)
     .json(
@@ -47,7 +53,10 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
  * Upload multiple profile photos
  */
 export const uploadProfilePhotos = asyncHandler(async (req, res) => {
+  console.log('📸 uploadProfilePhotos - req.files count:', req.files?.length);
+  console.log('📸 uploadProfilePhotos - req.files:', req.files?.map(f => ({ fieldname: f.fieldname, size: f.size, mimetype: f.mimetype })));
   if (!req.files || req.files.length === 0) {
+    console.error('❌ uploadProfilePhotos - No files received! req.headers content-type:', req.headers['content-type']);
     throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No files uploaded');
   }
 
@@ -79,6 +88,10 @@ export const uploadProfilePhotos = asyncHandler(async (req, res) => {
   });
 
   const mediaItems = await Promise.all(addMediaPromises);
+  console.log('📸 uploadProfilePhotos - Saved media items:', mediaItems.map(m => ({ id: m.id, url: m.url, type: m.type })));
+
+  // Invalidate profile cache so subsequent fetches include the new photos
+  await cacheHelper.del(`profile:userId:${req.user.id}`);
 
   res
     .status(HTTP_STATUS.OK)
