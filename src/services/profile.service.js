@@ -254,11 +254,12 @@ export const searchProfiles = async (query, currentUserId = null) => {
       drinkingHabit,
       type,
       search,
+      minCompletion,
     } = query;
 
     const where = {
       isPublished: true,
-      profileCompleteness: { gte: 50 },
+      profileCompleteness: { gte: Number(minCompletion) || 50 },
       user: {
         isActive: true,
         isBanned: false,
