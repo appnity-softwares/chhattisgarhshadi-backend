@@ -136,7 +136,7 @@ export const deleteUser = async (userId) => {
         data: {
           isActive: false,
           isBanned: true,
-          banReason: 'Account deleted by user.',
+          banReason: 'Account deleted by administrator.',
           deletedAt: new Date(),
           email: `deleted_${userId}@placeholder.com`,
           phone: `deleted_${userId}`,
@@ -148,7 +148,9 @@ export const deleteUser = async (userId) => {
           },
         },
       }),
-      prisma.profile.update({
+      // Use updateMany instead of update because a profile might not exist for the user
+      // and update throws an error if no record matches the where clause.
+      prisma.profile.updateMany({
         where: { userId: parseInt(userId) },
         data: {
           firstName: 'Deleted',
@@ -162,7 +164,7 @@ export const deleteUser = async (userId) => {
       prisma.refreshToken.deleteMany({ where: { userId: parseInt(userId) } }),
     ]);
 
-    logger.info(`User soft-deleted: ${userId}`);
+    logger.info(`User soft-deleted by admin: ${userId}`);
     return { success: true };
   } catch (error) {
     logger.error('Error in deleteUser:', error);
