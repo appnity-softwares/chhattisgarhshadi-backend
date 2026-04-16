@@ -1,8 +1,9 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
-import { chatService } from '../services/chat.service.js';
+import { ApiError } from '../utils/ApiError.js';
 import { HTTP_STATUS } from '../utils/constants.js';
 import { logAdminAction } from '../services/activityLog.service.js';
+import prisma from '../config/database.js';
 
 /**
  * [ADMIN] Get all conversations for moderation
