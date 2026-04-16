@@ -22,102 +22,84 @@ const RATE_LIMITS = {
     GENERAL: { max: 50, windowMs: 60 * 60 * 1000 }, // 50/hour
 };
 
-// In-memory store for rate limiting (use Redis in production for distributed systems)
-// Structure: { userId: { type: { count: number, resetAt: timestamp } } }
-const rateLimitStore = new Map();
-
-/**
- * Clean up expired entries periodically (every 5 minutes)
- */
-setInterval(() => {
-    const now = Date.now();
-    for (const [userId, types] of rateLimitStore.entries()) {
-        for (const [type, data] of Object.entries(types)) {
-            if (data.resetAt < now) {
-                delete types[type];
-            }
-        }
-        if (Object.keys(types).length === 0) {
-            rateLimitStore.delete(userId);
-        }
-    }
-}, 5 * 60 * 1000);
+// Instead of Map, we will use Redis for distributed rate-limiting
+import { getRedisClient, isRedisConnected } from '../config/redis.js';
 
 /**
  * Check if a notification should be rate limited
  * @param {number} userId - User ID
  * @param {string} type - Notification type
- * @returns {boolean} - True if rate limited, false if allowed
+ * @returns {Promise<boolean>} - True if rate limited, false if allowed
  */
-export const isRateLimited = (userId, type) => {
+export const isRateLimited = async (userId, type) => {
     const limit = RATE_LIMITS[type] || RATE_LIMITS.GENERAL;
     const now = Date.now();
 
-    // Get or create user's rate limit data
-    if (!rateLimitStore.has(userId)) {
-        rateLimitStore.set(userId, {});
+    if (!isRedisConnected()) {
+      logger.warn('Redis not connected, bypassing rate limit (unsafe)');
+      return false; // Fallback to allow if Redis is down
     }
 
-    const userLimits = rateLimitStore.get(userId);
+    const redis = getRedisClient();
+    const key = `ratelimit:${type}:${userId}`;
+    
+    try {
+        const countStr = await redis.get(key);
+        let count = countStr ? parseInt(countStr, 10) : 0;
 
-    // Get or create type-specific limit data
-    if (!userLimits[type] || userLimits[type].resetAt < now) {
-        userLimits[type] = {
-            count: 0,
-            resetAt: now + limit.windowMs,
-        };
+        if (count >= limit.max) {
+            logger.warn(
+                `Rate limit exceeded for user ${userId}, type: ${type} ` +
+                `(${count}/${limit.max} in ${limit.windowMs}ms)`
+            );
+            return true;
+        }
+
+        const multi = redis.multi();
+        multi.incr(key);
+        if (count === 0) {
+            // Set TTL in seconds on the first request
+            multi.pexpire(key, limit.windowMs);
+        }
+        await multi.exec();
+
+        return false;
+    } catch (error) {
+        logger.error(`Redis rate limit error: ${error.message}`);
+        return false; // Fallback
     }
-
-    const typeLimit = userLimits[type];
-
-    // Check if limit exceeded
-    if (typeLimit.count >= limit.max) {
-        logger.warn(
-            `Rate limit exceeded for user ${userId}, type: ${type} ` +
-            `(${typeLimit.count}/${limit.max} in ${limit.windowMs}ms)`
-        );
-        return true;
-    }
-
-    // Increment counter
-    typeLimit.count++;
-    return false;
 };
 
 /**
  * Get current rate limit status for a user and type
  * @param {number} userId - User ID
  * @param {string} type - Notification type
- * @returns {object} - { allowed: boolean, remaining: number, resetAt: timestamp }
+ * @returns {Promise<object>} - { allowed: boolean, remaining: number, resetAt: timestamp }
  */
-export const getRateLimitStatus = (userId, type) => {
+export const getRateLimitStatus = async (userId, type) => {
     const limit = RATE_LIMITS[type] || RATE_LIMITS.GENERAL;
     const now = Date.now();
 
-    if (!rateLimitStore.has(userId)) {
-        return {
-            allowed: true,
-            remaining: limit.max,
-            resetAt: now + limit.windowMs,
-        };
+    if (!isRedisConnected()) {
+        return { allowed: true, remaining: limit.max, resetAt: now + limit.windowMs };
     }
 
-    const userLimits = rateLimitStore.get(userId);
-    const typeLimit = userLimits[type];
+    const redis = getRedisClient();
+    const key = `ratelimit:${type}:${userId}`;
+    
+    try {
+        const countStr = await redis.get(key);
+        const count = countStr ? parseInt(countStr, 10) : 0;
+        const ttl = await redis.pttl(key); // Returns TTL in ms
 
-    if (!typeLimit || typeLimit.resetAt < now) {
         return {
-            allowed: true,
-            remaining: limit.max,
-            resetAt: now + limit.windowMs,
+            allowed: count < limit.max,
+            remaining: Math.max(0, limit.max - count),
+            resetAt: ttl > 0 ? now + ttl : now + limit.windowMs,
         };
+    } catch (err) {
+        return { allowed: true, remaining: limit.max, resetAt: now + limit.windowMs };
     }
-
-    return {
-        allowed: typeLimit.count < limit.max,
-        remaining: Math.max(0, limit.max - typeLimit.count),
-        resetAt: typeLimit.resetAt,
-    };
 };
 
 /**
@@ -125,18 +107,23 @@ export const getRateLimitStatus = (userId, type) => {
  * @param {number} userId - User ID
  * @param {string} [type] - Optional specific type to reset
  */
-export const resetRateLimit = (userId, type = null) => {
-    if (!rateLimitStore.has(userId)) {
-        return;
-    }
-
-    if (type) {
-        const userLimits = rateLimitStore.get(userId);
-        delete userLimits[type];
-        logger.info(`Rate limit reset for user ${userId}, type: ${type}`);
-    } else {
-        rateLimitStore.delete(userId);
-        logger.info(`All rate limits reset for user ${userId}`);
+export const resetRateLimit = async (userId, type = null) => {
+    if (!isRedisConnected()) return;
+    const redis = getRedisClient();
+    
+    try {
+        if (type) {
+            await redis.del(`ratelimit:${type}:${userId}`);
+            logger.info(`Rate limit reset for user ${userId}, type: ${type}`);
+        } else {
+            const keys = await redis.keys(`ratelimit:*:${userId}`);
+            if (keys.length > 0) {
+                await redis.del(...keys);
+            }
+            logger.info(`All rate limits reset for user ${userId}`);
+        }
+    } catch (err) {
+        logger.error(`Error resetting rate limit for ${userId}: ${err.message}`);
     }
 };
 

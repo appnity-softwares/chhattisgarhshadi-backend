@@ -183,7 +183,7 @@ export const createNotification = async (dto) => {
 
   try {
     // ✅ RATE LIMITING: Check if user is being spammed
-    if (isRateLimited(userId, type)) {
+    if (await isRateLimited(userId, type)) {
       logger.warn(`⏱️  Notification rate limited for user ${userId}, type: ${type}`);
       metrics.notificationsFailed++;
       return null; // Silently skip - don't spam user

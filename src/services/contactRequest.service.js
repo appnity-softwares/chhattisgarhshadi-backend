@@ -34,7 +34,7 @@ export const createContactRequest = async (requesterId, data) => {
 
   try {
     // 1. Check Rate Limiter First (Safety Layer)
-    if (isRateLimited(requesterId, 'CONTACT_REQUEST')) {
+    if (await isRateLimited(requesterId, 'CONTACT_REQUEST')) {
       // Flag user for spam behavior by creating a System Auto-Report
       const existingReport = await prisma.report.findFirst({
         where: { reportedUserId: requesterId, reason: 'SPAM', status: 'PENDING' }

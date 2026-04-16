@@ -7,6 +7,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
+import * as Sentry from '@sentry/node';
 
 import routes from './routes/index.js';
 import { logger } from './config/logger.js';
@@ -17,8 +18,19 @@ import { env } from './config/env.js';
 
 const app = express();
 
+// Initialize Sentry
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || "https://placeholder@sentry.io/123456",
+  environment: process.env.NODE_ENV || 'development',
+});
+// The request handler must be the first middleware on the app
+app.use(Sentry.Handlers.requestHandler());
+// TracingHandler creates a trace for every incoming request
+app.use(Sentry.Handlers.tracingHandler());
+
 // Trust proxy is required when running behind a load balancer (like Render, Heroku, AWS ELB)
 // This fixes the "X-Forwarded-For" header validation error from express-rate-limit
+app.use(Sentry.Handlers.requestHandler());
 app.set('trust proxy', 1);
 
 // ============================================
@@ -254,6 +266,9 @@ app.use((req, res) => {
     }),
   });
 });
+
+// The Sentry error handler must be before any other error middleware and after all controllers
+app.use(Sentry.Handlers.errorHandler());
 
 // Error Handler
 app.use(errorHandler);

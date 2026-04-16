@@ -29,7 +29,7 @@ export const createPhotoRequest = async (requesterId, data) => {
 
   try {
     // 0. Check Rate Limiter First (Safety Layer)
-    if (isRateLimited(requesterId, 'PHOTO_REQUEST')) {
+    if (await isRateLimited(requesterId, 'PHOTO_REQUEST')) {
       // Flag user for spam behavior by creating a System Auto-Report
       const existingReport = await prisma.report.findFirst({
         where: { reportedUserId: requesterId, reason: 'SPAM', status: 'PENDING' }
