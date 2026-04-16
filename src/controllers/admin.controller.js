@@ -9,6 +9,10 @@ import { ApiError } from '../utils/ApiError.js';
 import jwtUtils from '../utils/jwt.js';
 import bcrypt from 'bcryptjs';
 import prisma from '../config/database.js';
+import { contactRequestService } from '../services/contactRequest.service.js';
+import { photoRequestService } from '../services/photoRequest.service.js';
+import { chatModerationController } from '../controllers/chatModeration.controller.js';
+import { bulkModerationController } from '../controllers/bulkModeration.controller.js';
 
 /**
  * [NEW] Admin Login
@@ -363,6 +367,65 @@ export const adminDeleteProfile = asyncHandler(async (req, res) => {
   res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, null, 'Profile deleted successfully by Admin'));
 });
 
+/**
+ * [ADMIN] Get all contact requests with user details
+ */
+export const getAdminContactRequests = asyncHandler(async (req, res) => {
+  const result = await contactRequestService.getAdminContactRequests(req.query);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Contact requests retrieved successfully'));
+});
+
+/**
+ * [ADMIN] Update contact request status (approve/reject)
+ */
+export const updateAdminContactRequest = asyncHandler(async (req, res) => {
+  const { status, reason } = req.body;
+  const id = parseInt(req.params.id, 10);
+  
+  const updatedRequest = await contactRequestService.updateAdminContactRequest(
+    id, 
+    status, 
+    reason, 
+    req.user.id
+  );
+  
+  const message = status === 'APPROVED' ? 'Request approved' : 'Request rejected';
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedRequest, message));
+});
+
+/**
+ * [ADMIN] Get all photo requests with user details
+ */
+export const getAdminPhotoRequests = asyncHandler(async (req, res) => {
+  const result = await photoRequestService.getAdminPhotoRequests(req.query);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Photo requests retrieved successfully'));
+});
+
+/**
+ * [ADMIN] Update photo request status (approve/reject)
+ */
+export const updateAdminPhotoRequest = asyncHandler(async (req, res) => {
+  const { status, reason } = req.body;
+  const id = parseInt(req.params.id, 10);
+  
+  const updatedRequest = await photoRequestService.updateAdminPhotoRequest(
+    id, 
+    status, 
+    reason, 
+    req.user.id
+  );
+  
+  const message = status === 'APPROVED' ? 'Request approved' : 'Request rejected';
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedRequest, message));
+});
 
 export const adminController = {
   adminLogin,
@@ -390,4 +453,19 @@ export const adminController = {
   adminCreateProfile,
   adminUpdateProfile,
   adminDeleteProfile,
+  // Contact request admin methods
+  getAdminContactRequests,
+  updateAdminContactRequest,
+  // Photo request admin methods
+  getAdminPhotoRequests,
+  updateAdminPhotoRequest,
+  // Chat moderation admin methods
+  getAllConversations: chatModerationController.getAllConversations,
+  getConversationById: chatModerationController.getConversationById,
+  deleteConversation: chatModerationController.deleteConversation,
+  flagMessage: chatModerationController.flagMessage,
+  // Bulk moderation admin methods
+  bulkModeration: bulkModerationController.bulkModeration,
+  bulkModerationReport: bulkModerationController.bulkModerationReport,
+  bulkModerationAction: bulkModerationController.bulkModeration,
 };

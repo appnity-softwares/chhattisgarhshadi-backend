@@ -63,9 +63,42 @@ export const respondToRequest = asyncHandler(async (req, res) => {
 });
 
 
+/**
+ * [ADMIN] Get all contact requests with user details
+ */
+export const getAdminContactRequests = asyncHandler(async (req, res) => {
+  const result = await contactRequestService.getAdminContactRequests(req.query);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Contact requests retrieved successfully'));
+});
+
+/**
+ * [ADMIN] Update contact request status (approve/reject)
+ */
+export const updateAdminContactRequest = asyncHandler(async (req, res) => {
+  const { status, reason } = req.body;
+  const id = parseInt(req.params.id, 10);
+  
+  const updatedRequest = await contactRequestService.updateAdminContactRequest(
+    id, 
+    status, 
+    reason, 
+    req.user.id
+  );
+  
+  const message = status === 'APPROVED' ? 'Request approved' : 'Request rejected';
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedRequest, message));
+});
+
 export const contactRequestController = {
   createContactRequest,
   getSentRequests,
   getReceivedRequests,
   respondToRequest,
+  // Admin methods
+  getAdminContactRequests,
+  updateAdminContactRequest,
 };

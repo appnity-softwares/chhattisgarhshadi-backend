@@ -156,4 +156,51 @@ router.use('/theme', adminThemeRoutes);
 router.use('/success-stories', adminSuccessStoryRoutes);
 router.use('/verifications', verificationRoutes); // Added to enable verification queue
 
+// --- ADDED: Contact Requests Monitoring ---
+router.get(
+  '/contact-requests',
+  validate(paginationQuerySchema),
+  adminController.getAdminContactRequests
+);
+router.put(
+  '/contact-requests/:id',
+  validate(userIdParamSchema),
+  adminController.updateAdminContactRequest
+);
+
+// --- ADDED: Photo Requests Monitoring ---
+router.get(
+  '/photo-requests',
+  validate(paginationQuerySchema),
+  adminController.getAdminPhotoRequests
+);
+router.put(
+  '/photo-requests/:id',
+  validate(userIdParamSchema),
+  adminController.updateAdminPhotoRequest
+);
+
+// --- ADDED: Chat Moderation ---
+router.get(
+  '/chats',
+  validate(paginationQuerySchema),
+  adminController.getAllConversations
+);
+router.get(
+  '/chats/:id',
+  validate(userIdParamSchema),
+  adminController.getConversationById
+);
+router.delete(
+  '/chats/:id',
+  validate(userIdParamSchema),
+  adminController.deleteConversation
+);
+
+// --- ADDED: Bulk Moderation ---
+router.post(
+  '/moderation/bulk',
+  adminController.bulkModeration
+);
+
 export default router;

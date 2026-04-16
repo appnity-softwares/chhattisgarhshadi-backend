@@ -7,6 +7,8 @@ import { blockService } from './block.service.js';
 // ADDED: Import notification service for push notifications
 import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
+import { logAdminAction } from './activityLog.service.js';
+import { isRateLimited } from './rateLimit.service.js';
 
 // Reusable select for public user data
 const userPublicSelect = {
@@ -31,13 +33,33 @@ export const createContactRequest = async (requesterId, data) => {
   }
 
   try {
-    // 1. Check for Blocks
+    // 1. Check Rate Limiter First (Safety Layer)
+    if (isRateLimited(requesterId, 'CONTACT_REQUEST')) {
+      // Flag user for spam behavior by creating a System Auto-Report
+      const existingReport = await prisma.report.findFirst({
+        where: { reportedUserId: requesterId, reason: 'SPAM', status: 'PENDING' }
+      });
+      if (!existingReport) {
+        await prisma.report.create({
+          data: {
+            reporterId: requesterId,
+            reportedUserId: requesterId,
+            reason: 'SPAM',
+            description: 'System Auto-Flag: User exceeded contact request rate limits (Potential spam/bot behavior).',
+            status: 'PENDING',
+          }
+        });
+      }
+      throw new ApiError(HTTP_STATUS.TOO_MANY_REQUESTS, 'Rate limit exceeded. Too many requests sent recently.');
+    }
+
+    // 2. Check for Blocks
     const blockedIdSet = await blockService.getAllBlockedUserIds(requesterId);
     if (blockedIdSet.has(profileId)) {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You cannot interact with this user');
     }
 
-    // 2. Get Requester (to check subscription) and Receiver (to check privacy)
+    // 3. Get Requester (to check subscription) and Receiver (to check privacy)
     const [requester, receiver] = await Promise.all([
       prisma.user.findUnique({
         where: { id: requesterId },
@@ -217,6 +239,118 @@ export const getReceivedRequests = async (userId, query) => {
  * @param {string} status - 'APPROVED' or 'REJECTED'
  * @returns {Promise<Object>} The updated contact request
  */
+/**
+ * [ADMIN] Get all contact requests with user details
+ */
+export const getAdminContactRequests = async (query) => {
+  const { page = 1, limit = 10, status, search } = query;
+  const skip = (page - 1) * limit;
+
+  const where = {};
+  
+  if (status && status !== 'ALL') {
+    where.status = status;
+  }
+  
+  if (search) {
+    where.OR = [
+      { sender: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
+      { sender: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+      { receiver: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
+      { receiver: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+    ];
+  }
+
+  const [requests, total] = await Promise.all([
+    prisma.contactRequest.findMany({
+      where,
+      include: {
+        sender: {
+          include: {
+            profile: {
+              include: {
+                user: {
+                  select: { id: true, email: true, role: true }
+                }
+              }
+            }
+          }
+        },
+        receiver: {
+          include: {
+            profile: {
+              include: {
+                user: {
+                  select: { id: true, email: true, role: true }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parseInt(limit, 10),
+    }),
+    prisma.contactRequest.count({ where })
+  ]);
+
+  return {
+    requests,
+    pagination: getPaginationMetadata(page, limit, total)
+  };
+};
+
+/**
+ * [ADMIN] Update contact request status with admin override
+ */
+export const updateAdminContactRequest = async (requestId, status, reason, adminId) => {
+  const request = await prisma.contactRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      sender: { include: { user: true } },
+      receiver: { include: { user: true } }
+    }
+  });
+
+  if (!request) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Contact request not found');
+  }
+
+  const updatedRequest = await prisma.contactRequest.update({
+    where: { id: requestId },
+    data: {
+      status,
+      responseReason: reason,
+      respondedAt: new Date(),
+      respondedBy: adminId
+    }
+  });
+
+  // Log admin action
+  await logAdminAction(adminId, 'CONTACT_REQUEST_UPDATED', 
+    `Updated contact request ${requestId} to ${status}`, 
+    { requestId, status, reason }
+  );
+
+  // Send notification to users
+  if (status === 'APPROVED') {
+    await notificationService.sendNotification(
+      request.receiverId,
+      'Your contact request has been approved',
+      NOTIFICATION_TYPES.CONTACT_REQUEST_APPROVED
+    );
+  } else if (status === 'REJECTED') {
+    await notificationService.sendNotification(
+      request.senderId,
+      'Your contact request has been rejected',
+      NOTIFICATION_TYPES.CONTACT_REQUEST_REJECTED
+    );
+  }
+
+  return updatedRequest;
+};
+
 export const respondToRequest = async (userId, requestId, status) => {
   try {
     const request = await prisma.contactRequest.findUnique({

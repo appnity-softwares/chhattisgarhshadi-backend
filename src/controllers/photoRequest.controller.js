@@ -63,9 +63,42 @@ export const respondToRequest = asyncHandler(async (req, res) => {
 });
 
 
+/**
+ * [ADMIN] Get all photo requests with user details
+ */
+export const getAdminPhotoRequests = asyncHandler(async (req, res) => {
+  const result = await photoRequestService.getAdminPhotoRequests(req.query);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, result, 'Photo requests retrieved successfully'));
+});
+
+/**
+ * [ADMIN] Update photo request status (approve/reject)
+ */
+export const updateAdminPhotoRequest = asyncHandler(async (req, res) => {
+  const { status, reason } = req.body;
+  const id = parseInt(req.params.id, 10);
+  
+  const updatedRequest = await photoRequestService.updateAdminPhotoRequest(
+    id, 
+    status, 
+    reason, 
+    req.user.id
+  );
+  
+  const message = status === 'APPROVED' ? 'Request approved' : 'Request rejected';
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, updatedRequest, message));
+});
+
 export const photoRequestController = {
   createPhotoRequest,
   getSentRequests,
   getReceivedRequests,
   respondToRequest,
+  // Admin methods
+  getAdminPhotoRequests,
+  updateAdminPhotoRequest,
 };

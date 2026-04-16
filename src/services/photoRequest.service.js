@@ -1,12 +1,13 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, PHOTO_REQUEST_STATUS } from '../utils/constants.js';
+import { HTTP_STATUS, PHOTO_REQUEST_STATUS, NOTIFICATION_TYPES } from '../utils/constants.js';
 import { getPaginationParams, getPaginationMetadata } from '../utils/helpers.js';
 import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
-// Import notificationService to send notifications
-import { notificationService } from './notification.service.js'; 
+import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
+import { logAdminAction } from './activityLog.service.js';
+import { isRateLimited } from './rateLimit.service.js';
 
 // Reusable select for public user data
 const userPublicSelect = {
@@ -27,6 +28,26 @@ export const createPhotoRequest = async (requesterId, data) => {
   const { photoId, message } = data;
 
   try {
+    // 0. Check Rate Limiter First (Safety Layer)
+    if (isRateLimited(requesterId, 'PHOTO_REQUEST')) {
+      // Flag user for spam behavior by creating a System Auto-Report
+      const existingReport = await prisma.report.findFirst({
+        where: { reportedUserId: requesterId, reason: 'SPAM', status: 'PENDING' }
+      });
+      if (!existingReport) {
+        await prisma.report.create({
+          data: {
+            reporterId: requesterId,
+            reportedUserId: requesterId,
+            reason: 'SPAM',
+            description: 'System Auto-Flag: User exceeded photo request rate limits (Potential spam/bot behavior).',
+            status: 'PENDING',
+          }
+        });
+      }
+      throw new ApiError(HTTP_STATUS.TOO_MANY_REQUESTS, 'Rate limit exceeded. Too many requests sent recently.');
+    }
+
     // 1. Get the photo, its owner, and its privacy settings
     const media = await prisma.media.findUnique({
       where: { id: photoId },
@@ -195,6 +216,118 @@ export const getReceivedRequests = async (userId, query) => {
  * @param {string} status - 'APPROVED' or 'REJECTED'
  * @returns {Promise<Object>} The updated photo view request
  */
+/**
+ * [ADMIN] Get all photo requests with user details
+ */
+export const getAdminPhotoRequests = async (query) => {
+  const { page = 1, limit = 10, status, search } = query;
+  const skip = (page - 1) * limit;
+
+  const where = {};
+  
+  if (status && status !== 'ALL') {
+    where.status = status;
+  }
+  
+  if (search) {
+    where.OR = [
+      { requester: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
+      { requester: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+      { requestee: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
+      { requestee: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+    ];
+  }
+
+  const [requests, total] = await Promise.all([
+    prisma.photoRequest.findMany({
+      where,
+      include: {
+        requester: {
+          include: {
+            profile: {
+              include: {
+                user: {
+                  select: { id: true, email: true, role: true }
+                }
+              }
+            }
+          }
+        },
+        requestee: {
+          include: {
+            profile: {
+              include: {
+                user: {
+                  select: { id: true, email: true, role: true }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parseInt(limit, 10),
+    }),
+    prisma.photoRequest.count({ where })
+  ]);
+
+  return {
+    requests,
+    pagination: getPaginationMetadata(page, limit, total)
+  };
+};
+
+/**
+ * [ADMIN] Update photo request status with admin override
+ */
+export const updateAdminPhotoRequest = async (requestId, status, reason, adminId) => {
+  const request = await prisma.photoRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      requester: { include: { user: true } },
+      requestee: { include: { user: true } }
+    }
+  });
+
+  if (!request) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Photo request not found');
+  }
+
+  const updatedRequest = await prisma.photoRequest.update({
+    where: { id: requestId },
+    data: {
+      status,
+      responseReason: reason,
+      respondedAt: new Date(),
+      respondedBy: adminId
+    }
+  });
+
+  // Log admin action
+  await logAdminAction(adminId, 'PHOTO_REQUEST_UPDATED', 
+    `Updated photo request ${requestId} to ${status}`, 
+    { requestId, status, reason }
+  );
+
+  // Send notification to users
+  if (status === 'APPROVED') {
+    await notificationService.sendNotification(
+      request.requesteeId,
+      'Your photo view request has been approved',
+      NOTIFICATION_TYPES.PHOTO_REQUEST_APPROVED
+    );
+  } else if (status === 'REJECTED') {
+    await notificationService.sendNotification(
+      request.requesterId,
+      'Your photo view request has been rejected',
+      NOTIFICATION_TYPES.PHOTO_REQUEST_REJECTED
+    );
+  }
+
+  return updatedRequest;
+};
+
 export const respondToRequest = async (userId, requestId, status) => {
   try {
     const request = await prisma.photoViewRequest.findUnique({
