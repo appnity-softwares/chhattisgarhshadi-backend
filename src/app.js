@@ -84,6 +84,9 @@ if (!allowedOrigins.includes('https://admin.chhattisgarhshadi.com')) {
 if (!allowedOrigins.includes('https://chhattisgarhshadi.com')) {
   allowedOrigins.push('https://chhattisgarhshadi.com');
 }
+if (!allowedOrigins.includes('https://www.chhattisgarhshadi.com')) {
+  allowedOrigins.push('https://www.chhattisgarhshadi.com');
+}
 
 const corsOptions = {
   origin: (origin, callback) => {
