@@ -1761,6 +1761,10 @@ model ThemeConfiguration {
   gradientStart  String   @default("#E94057") @db.VarChar(20)
   gradientEnd    String   @default("#8A2387") @db.VarChar(20)
 
+  // Card specific branding
+  profileCardColor   String   @default("#FFFFFF") @db.VarChar(20)
+  profileCardTextColor String @default("#1A1A1A") @db.VarChar(20)
+
   // System
   isActive     Boolean  @default(true) // Only one active theme at a time
   createdAt    DateTime @default(now())

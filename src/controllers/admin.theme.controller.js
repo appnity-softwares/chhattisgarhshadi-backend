@@ -22,7 +22,9 @@ export const adminThemeController = {
       successColor: '#4CAF50',
       errorColor: '#F44336',
       gradientStart: '#E94057',
-      gradientEnd: '#8A2387'
+      gradientEnd: '#8A2387',
+      profileCardColor: '#FFFFFF',
+      profileCardTextColor: '#1A1A1A'
     };
 
     let theme = null;
@@ -56,7 +58,8 @@ export const adminThemeController = {
       backgroundColor, surfaceColor,
       textPrimary, textSecondary,
       successColor, errorColor,
-      gradientStart, gradientEnd
+      gradientStart, gradientEnd,
+      profileCardColor, profileCardTextColor
     } = req.body;
 
     // First deactivate any currently active models
@@ -79,6 +82,8 @@ export const adminThemeController = {
         errorColor: errorColor || '#F44336',
         gradientStart: gradientStart || primaryColor || '#E94057',
         gradientEnd: gradientEnd || secondaryColor || '#8A2387',
+        profileCardColor: profileCardColor || '#FFFFFF',
+        profileCardTextColor: profileCardTextColor || '#1A1A1A',
         isActive: true
       }
     });
