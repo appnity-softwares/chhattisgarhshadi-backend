@@ -27,6 +27,15 @@ export const authenticate = async (req, res, next) => {
       return next();
     }
 
+    // Try to find in admins table first if role suggests it
+    if (decoded.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN') {
+      const admin = await prisma.admin.findUnique({ where: { id: decoded.id } });
+      if (admin && admin.isActive) {
+        req.user = admin;
+        return next();
+      }
+    }
+
     // Get user from database
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -83,6 +92,15 @@ export const optionalAuth = async (req, res, next) => {
       if (decoded.id === 0 && decoded.role === 'ADMIN') {
         req.user = { id: 0, role: 'ADMIN', email: decoded.email, isActive: true, isBanned: false };
       } else {
+        // Try admin check first
+        if (decoded.role === 'ADMIN' || decoded.role === 'SUPER_ADMIN') {
+          const admin = await prisma.admin.findUnique({ where: { id: decoded.id } });
+          if (admin && admin.isActive) {
+            req.user = admin;
+            return next();
+          }
+        }
+
         const user = await prisma.user.findUnique({
           where: { id: decoded.id },
           include: {
