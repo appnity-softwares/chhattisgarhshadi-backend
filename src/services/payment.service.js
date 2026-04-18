@@ -237,6 +237,30 @@ export const createOrder = async (userId, planId, promoCode = null) => {
       endDate: provisionalEndDate,
     });
 
+    // HANDLE FREE TRANSACTIONS: Bypass Razorpay if amount is 0
+    if (finalAmount <= 0) {
+      logger.info(`Processing free subscription for user ${userId}, plan ${plan.id}`);
+      
+      // Auto-finalize the free payment
+      const result = await finalizeCapturedPayment({
+        razorpayOrderId: `free_${Date.now()}_${userId}`,
+        razorpayPaymentId: `free_payment_${Date.now()}`,
+        paymentMethod: 'PROMO_CODE',
+        paidAt: new Date(),
+        // We override logic slightly to find the specific payment we just created
+        paymentId: createdRecords.payment.id
+      });
+
+      return {
+        isFree: true,
+        success: true,
+        message: 'Subscription activated via promo code',
+        subscriptionId: result.subscription.id,
+        finalAmount: 0,
+        discountApplied
+      };
+    }
+
     const razorpayOrder = await createGatewayOrder({
       payment: createdRecords.payment,
       subscription: createdRecords.subscription,

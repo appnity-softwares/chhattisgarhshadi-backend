@@ -105,10 +105,14 @@ export const finalizeCapturedPayment = async ({
   razorpaySignature = null,
   paymentMethod = 'RAZORPAY',
   paidAt = new Date(),
+  paymentId = null, // Path for free/internal processing
 }) =>
   prisma.$transaction(async (tx) => {
+    // Lookup by paymentId if provided, otherwise fallback to razorpayOrderId
+    const where = paymentId ? { id: paymentId } : { razorpayOrderId };
+    
     const payment = await tx.payment.findFirst({
-      where: { razorpayOrderId },
+      where,
       include: {
         subscription: {
           include: { plan: true },
