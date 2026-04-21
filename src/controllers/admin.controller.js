@@ -94,11 +94,11 @@ export const updateUserRole = asyncHandler(async (req, res) => {
  */
 export const deleteUser = asyncHandler(async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
-  await userService.deleteUser(userId);
-  await logAdminAction(req, 'USER_DELETED', `Deleted user ${userId}`, { userId });
+  await userService.hardDeleteUser(userId);
+  await logAdminAction(req, 'USER_PERMANENTLY_DELETED', `Permanently deleted user ID: ${userId}`, { userId });
   res
     .status(HTTP_STATUS.OK)
-    .json(new ApiResponse(HTTP_STATUS.OK, null, 'User deleted successfully'));
+    .json(new ApiResponse(HTTP_STATUS.OK, null, 'User permanently deleted from database'));
 });
 
 /**
@@ -236,6 +236,73 @@ export const unbanUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(HTTP_STATUS.OK, user, 'User unbanned successfully'));
 });
 
+/**
+ * [NEW] Bulk Ban Users (Admin)
+ */
+export const bulkBanUsers = asyncHandler(async (req, res) => {
+  const { userIds, reason } = req.body;
+  
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No user IDs provided');
+  }
+
+  const results = await Promise.allSettled(
+    userIds.map(id => userService.banUser(parseInt(id, 10), reason || 'Bulk banned by admin', req.user.id))
+  );
+
+  const successful = results.filter(r => r.status === 'fulfilled').length;
+  await logAdminAction(req, 'BULK_USER_BANNED', `Bulk banned ${successful}/${userIds.length} users`, { userIds, reason });
+
+  res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, { successful, total: userIds.length }, `Successfully banned ${successful} users`)
+  );
+});
+
+/**
+ * [NEW] Bulk Unban Users (Admin)
+ */
+export const bulkUnbanUsers = asyncHandler(async (req, res) => {
+  const { userIds } = req.body;
+  
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No user IDs provided');
+  }
+
+  const results = await Promise.allSettled(
+    userIds.map(id => userService.unbanUser(parseInt(id, 10)))
+  );
+
+  const successful = results.filter(r => r.status === 'fulfilled').length;
+  await logAdminAction(req, 'BULK_USER_UNBANNED', `Bulk unbanned ${successful}/${userIds.length} users`, { userIds });
+
+  res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, { successful, total: userIds.length }, `Successfully unbanned ${successful} users`)
+  );
+});
+
+/**
+ * [NEW] Bulk Permanent Delete Users (Admin)
+ * WARNING: This action cannot be undone.
+ */
+export const bulkDeleteUsers = asyncHandler(async (req, res) => {
+  const { userIds } = req.body;
+  
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No user IDs provided');
+  }
+
+  const results = await Promise.allSettled(
+    userIds.map(id => userService.hardDeleteUser(parseInt(id, 10)))
+  );
+
+  const successful = results.filter(r => r.status === 'fulfilled').length;
+  await logAdminAction(req, 'BULK_USER_PERMANENT_DELETED', `Permanently hard-deleted ${successful}/${userIds.length} users from database`, { userIds });
+
+  res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, { successful, total: userIds.length }, `Successfully removed ${successful} users permanently from database`)
+  );
+});
+
 // --- SUBSCRIPTION PLAN MANAGEMENT ---
 
 /**
@@ -368,6 +435,137 @@ export const adminDeleteProfile = asyncHandler(async (req, res) => {
 });
 
 /**
+ * [NEW] Admin: Create user and profile together
+ */
+export const adminCreateUserWithProfile = asyncHandler(async (req, res) => {
+  const {
+    phone, countryCode, email, role,
+    ...profileData
+  } = req.body;
+
+  // 1. Create User & Profile in a transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Check if user already exists
+    if (phone) {
+      const existingUser = await tx.user.findFirst({
+        where: { phone, countryCode }
+      });
+      if (existingUser) {
+        throw new ApiError(HTTP_STATUS.CONFLICT, 'User with this phone number already exists');
+      }
+    }
+
+    if (email) {
+      const existingEmail = await tx.user.findUnique({
+        where: { email }
+      });
+      if (existingEmail) {
+        throw new ApiError(HTTP_STATUS.CONFLICT, 'User with this email already exists');
+      }
+    }
+
+    // Create User
+    const user = await tx.user.create({
+      data: {
+        phone: phone || null,
+        countryCode: countryCode || '+91',
+        email: email || null,
+        role: role || 'USER',
+        isPhoneVerified: !!phone,
+        phoneVerifiedAt: phone ? new Date() : null,
+        isEmailVerified: !!email,
+        emailVerifiedAt: email ? new Date() : null,
+        isActive: true,
+      }
+    });
+
+    // Create Profile
+    const profile = await tx.profile.create({
+      data: {
+        userId: user.id,
+        firstName: profileData.firstName,
+        lastName: profileData.lastName,
+        gender: profileData.gender,
+        dateOfBirth: new Date(profileData.dateOfBirth),
+        maritalStatus: profileData.maritalStatus,
+        religion: profileData.religion,
+        motherTongue: profileData.motherTongue,
+        category: profileData.category,
+        caste: profileData.caste,
+        subCaste: profileData.subCaste,
+        nativeVillage: profileData.nativeVillage,
+        city: profileData.city,
+        state: profileData.state,
+        country: profileData.country || 'India',
+        speaksChhattisgarhi: profileData.speaksChhattisgarhi ?? true,
+
+        // NEW: Saved Additional Fields
+        height: profileData.height ? parseInt(profileData.height) : null,
+        highestEducation: profileData.highestEducation || null,
+        occupation: profileData.occupation || null,
+        annualIncome: profileData.annualIncome || null,
+        fatherOccupation: profileData.fatherOccupation || null,
+        familyIncome: profileData.familyIncome || null,
+        bio: profileData.bio || null,
+
+        isDraft: false,
+        isPublished: true,
+        publishedAt: new Date(),
+      }
+    });
+
+    return { user, profile };
+  });
+
+  await logAdminAction(req, 'USER_CREATED_WITH_PROFILE', `Created user ${result.user.id} and profile`, { userId: result.user.id });
+
+  res.status(HTTP_STATUS.CREATED).json(
+    new ApiResponse(HTTP_STATUS.CREATED, result, 'User and profile created successfully by Admin')
+  );
+});
+
+/**
+ * [NEW] Admin: Upload profile photo for a user
+ */
+export const adminUploadProfilePhoto = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  
+  if (!req.file) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'No file uploaded');
+  }
+
+  // 1. Process and upload image to R2
+  const result = await uploadService.processAndUploadImage(
+    req.file,
+    `users/${userId}/photos`
+  );
+
+  // 2. Create Media record in database
+  const mediaData = {
+    url: result.original.url,
+    thumbnailUrl: result.thumbnail.url,
+    key: result.original.key,
+    thumbnailKey: result.thumbnail.key,
+    fileName: result.original.filename,
+    fileSize: result.original.size,
+    mimeType: result.original.mimetype,
+  };
+
+  const media = await profileService.addPhoto(
+    parseInt(userId),
+    mediaData,
+    MEDIA_TYPES.PROFILE_PHOTO
+  );
+
+  // Invalidate profile cache
+  await cacheHelper.del(`profile:userId:${userId}`);
+
+  res.status(HTTP_STATUS.OK).json(
+    new ApiResponse(HTTP_STATUS.OK, media, 'Profile photo uploaded successfully by Admin')
+  );
+});
+
+/**
  * [ADMIN] Get all contact requests with user details
  */
 export const getAdminContactRequests = asyncHandler(async (req, res) => {
@@ -453,6 +651,11 @@ export const adminController = {
   adminCreateProfile,
   adminUpdateProfile,
   adminDeleteProfile,
+  adminCreateUserWithProfile,
+  adminUploadProfilePhoto,
+  bulkBanUsers,
+  bulkUnbanUsers,
+  bulkDeleteUsers,
   // Contact request admin methods
   getAdminContactRequests,
   updateAdminContactRequest,

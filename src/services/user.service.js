@@ -128,7 +128,7 @@ export const updateUser = async (userId, data) => {
   }
 };
 
-export const deleteUser = async (userId) => {
+export const softDeleteUser = async (userId) => {
   try {
     await prisma.$transaction([
       prisma.user.update({
@@ -136,7 +136,7 @@ export const deleteUser = async (userId) => {
         data: {
           isActive: false,
           isBanned: true,
-          banReason: 'Account deleted by administrator.',
+          banReason: 'Account deleted by administrator (Soft-Delete).',
           deletedAt: new Date(),
           email: `deleted_${userId}@placeholder.com`,
           phone: `deleted_${userId}`,
@@ -148,8 +148,6 @@ export const deleteUser = async (userId) => {
           },
         },
       }),
-      // Use updateMany instead of update because a profile might not exist for the user
-      // and update throws an error if no record matches the where clause.
       prisma.profile.updateMany({
         where: { userId: parseInt(userId) },
         data: {
@@ -167,8 +165,32 @@ export const deleteUser = async (userId) => {
     logger.info(`User soft-deleted by admin: ${userId}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error in deleteUser:', error);
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error deleting account');
+    logger.error('Error in softDeleteUser:', error);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error soft-deleting account');
+  }
+};
+
+/**
+ * [NEW] Hard Delete User (Truly Permanent Deletion)
+ */
+export const hardDeleteUser = async (userId) => {
+  try {
+    const id = parseInt(userId, 10);
+    
+    // We use a transaction to ensure all related data is cleaned up
+    // Note: Most relations in schema use onDelete: Cascade, but we'll be safe
+    await prisma.user.delete({
+      where: { id: id }
+    });
+
+    logger.warn(`User TRULY PERMANENTLY DELETED by admin: ${userId}`);
+    return { success: true };
+  } catch (error) {
+    logger.error('Error in hardDeleteUser:', error);
+    if (error.code === 'P2025') {
+       throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found for deletion');
+    }
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error permanently deleting account from database');
   }
 };
 
@@ -277,6 +299,9 @@ export const getAllUsers = async (query) => {
       prisma.user.findMany({
         skip,
         take: limit,
+        where: {
+          deletedAt: null
+        },
         include: {
           profile: true,
           agent: {
@@ -290,7 +315,7 @@ export const getAllUsers = async (query) => {
           createdAt: 'desc',
         },
       }),
-      prisma.user.count(),
+      prisma.user.count({ where: { deletedAt: null } }),
     ]);
 
     const pagination = getPaginationMetadata(page, limit, total);
@@ -399,8 +424,9 @@ export const unbanUser = async (userId) => {
 export const userService = {
   getFullUserById,
   getPublicUserById,
-  updateUser,
-  deleteUser,
+  softDeleteUser,
+  hardDeleteUser,
+  deleteUser: softDeleteUser, // Keep alias for backward compatibility
   searchUsers,
   registerFcmToken,
   deleteFcmToken,

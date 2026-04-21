@@ -85,3 +85,42 @@ export const updateReportSchema = z.object({
     actionTaken: z.string().max(100).optional().nullable(),
   }).strict(),
 });
+
+// Schema for creating a user with profile (Admin)
+export const createUserWithProfileSchema = z.object({
+  body: z.object({
+    // User Account Info
+    phone: z.string().min(10, 'Phone must be at least 10 characters').max(15).optional(),
+    countryCode: z.string().default('+91'),
+    email: z.string().email('Invalid email address').optional().nullable(),
+    role: z.nativeEnum(UserRole).default(UserRole.USER),
+
+    // Profile Info
+    firstName: z.string().min(2, 'First name too short'),
+    lastName: z.string().min(1, 'Last name required'),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+    dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
+      message: 'Invalid date of birth',
+    }),
+    maritalStatus: z.string(),
+    religion: z.string(),
+    motherTongue: z.string(),
+    category: z.string().optional(),
+    caste: z.string().optional(),
+    subCaste: z.string().optional(),
+    nativeVillage: z.string().optional(),
+    city: z.string(),
+    state: z.string(),
+    country: z.string().default('India'),
+    speaksChhattisgarhi: z.boolean().default(true),
+
+    // NEW: Additional Fields for completeness
+    height: z.coerce.number().optional(),
+    highestEducation: z.string().optional(),
+    occupation: z.string().optional(),
+    annualIncome: z.string().optional(),
+    fatherOccupation: z.string().optional(),
+    familyIncome: z.string().optional(),
+    bio: z.string().optional(),
+  }),
+});

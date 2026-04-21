@@ -6,6 +6,10 @@ import { adminBulkController } from '../controllers/admin.bulk.controller.js'; /
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
+  uploadProfilePhoto,
+  handleMulterError,
+} from '../middleware/upload.js';
+import {
   paginationQuerySchema,
   recentQuerySchema,
   userIdParamSchema,
@@ -14,6 +18,7 @@ import {
   getReportsSchema,
   reportIdParamSchema,
   updateReportSchema,
+  createUserWithProfileSchema,
 } from '../validation/admin.validation.js';
 
 import agentRoutes from './agent.routes.js';
@@ -42,6 +47,11 @@ router.get(
   '/users',
   validate(paginationQuerySchema),
   adminController.getAllUsers
+);
+router.post(
+  '/users/create-with-profile',
+  validate(createUserWithProfileSchema),
+  adminController.adminCreateUserWithProfile
 );
 
 // ADDED: Bulk User Upload
@@ -87,6 +97,19 @@ router.post(
   adminController.grantSubscription
 );
 
+router.post(
+  '/users/bulk-ban',
+  adminController.bulkBanUsers
+);
+router.post(
+  '/users/bulk-unban',
+  adminController.bulkUnbanUsers
+);
+router.post(
+  '/users/bulk-delete',
+  adminController.bulkDeleteUsers
+);
+
 // --- Profile Management ---
 router.get(
   '/profiles',
@@ -96,6 +119,15 @@ router.get(
 router.post('/users/:userId/profile', adminController.adminCreateProfile);
 router.put('/users/:userId/profile', adminController.adminUpdateProfile);
 router.delete('/users/:userId/profile', adminController.adminDeleteProfile);
+
+router.post(
+  '/users/:userId/photo',
+  validate(userIdParamSchema),
+  uploadProfilePhoto,
+  handleMulterError,
+  adminController.adminUploadProfilePhoto
+);
+
 router.put('/profiles/:profileId/verify', adminController.verifyProfile);
 router.put('/profiles/:profileId/status', adminController.updateProfileStatus);
 
