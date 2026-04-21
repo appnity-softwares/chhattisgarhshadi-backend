@@ -1850,3 +1850,21 @@ model Broadcast {
   @@index([createdAt(sort: Desc)])
   @@map("broadcasts")
 }
+
+// ============================================
+// SYSTEM GLOBAL CONFIGURATION
+// ============================================
+
+model SystemConfiguration {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(100) // e.g., 'RAZORPAY_KEY_ID'
+  value     String   @db.Text
+  type      String   @default("STRING") @db.VarChar(20) // STRING, BOOLEAN, NUMBER, JSON
+  group     String   @default("GENERAL") @db.VarChar(50) // PAYMENTS, APP_CONFIG, UI
+  isSecret  Boolean  @default(false) // If true, value masked in UI
+  
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("system_configurations")
+}

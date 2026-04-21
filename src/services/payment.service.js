@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import prisma from '../config/database.js';
 import { config } from '../config/config.js';
 import {
-  razorpayInstance,
+  getRazorpayInstance,
+  getRazorpayConfig,
   getWebhookSecret,
   isRazorpayConfigured,
 } from '../config/razorpay.js';
@@ -25,14 +26,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const addDays = (date, days) =>
   new Date(new Date(date).getTime() + days * DAY_MS);
 
-const verifyClientSignature = ({
+const verifyClientSignature = async ({
   razorpay_order_id,
   razorpay_payment_id,
   razorpay_signature,
 }) => {
+  const { keySecret } = await getRazorpayConfig();
   const body = `${razorpay_order_id}|${razorpay_payment_id}`;
   const expectedSignature = crypto
-    .createHmac('sha256', config.RAZORPAY_KEY_SECRET)
+    .createHmac('sha256', keySecret)
     .update(body)
     .digest('hex');
 
@@ -157,7 +159,8 @@ const cancelPendingRecords = async ({ paymentId, subscriptionId, reason }) => {
 };
 
 const createGatewayOrder = async ({ payment, subscription, plan, amount, notes }) => {
-  const razorpayOrder = await razorpayInstance.orders.create({
+  const razorpay = await getRazorpayInstance();
+  const razorpayOrder = await razorpay.orders.create({
     amount: Math.round(amount * 100),
     currency: plan.currency || 'INR',
     receipt: `sub_${subscription.id}_pay_${payment.id}`,
@@ -206,7 +209,7 @@ const notifySubscriptionOutcome = async ({ userId, subscription, status }) => {
 };
 
 export const createOrder = async (userId, planId, promoCode = null) => {
-  if (!isRazorpayConfigured()) {
+  if (!(await isRazorpayConfigured())) {
     throw new ApiError(
       HTTP_STATUS.SERVICE_UNAVAILABLE,
       'Payment service is not configured. Please contact administrator.'
@@ -279,13 +282,15 @@ export const createOrder = async (userId, planId, promoCode = null) => {
       `Payment order created ${razorpayOrder.id} for user ${userId}, plan ${plan.id}`
     );
 
+    const { keyId } = await getRazorpayConfig();
+
     return {
       orderId: razorpayOrder.id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
       paymentId: createdRecords.payment.id,
-      razorpayKey: config.RAZORPAY_KEY_ID,
-      key: config.RAZORPAY_KEY_ID,
+      razorpayKey: keyId,
+      key: keyId,
       finalAmount,
       discountApplied,
     };
@@ -308,7 +313,7 @@ export const createOrder = async (userId, planId, promoCode = null) => {
 };
 
 export const createUpgradeOrder = async (userId, newPlanId) => {
-  if (!isRazorpayConfigured()) {
+  if (!(await isRazorpayConfigured())) {
     throw new ApiError(
       HTTP_STATUS.SERVICE_UNAVAILABLE,
       'Payment service is not configured. Please contact administrator.'
@@ -372,13 +377,15 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
       },
     });
 
+    const { keyId } = await getRazorpayConfig();
+
     return {
       orderId: razorpayOrder.id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
       paymentId: createdRecords.payment.id,
-      razorpayKey: config.RAZORPAY_KEY_ID,
-      key: config.RAZORPAY_KEY_ID,
+      razorpayKey: keyId,
+      key: keyId,
       remainingDaysCredited: remainingDays,
       totalDays,
       newEndDate: endDate.toISOString(),
@@ -403,7 +410,7 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
 
 export const verifyPayment = async (data) => {
   try {
-    verifyClientSignature(data);
+    await verifyClientSignature(data);
 
     const payment = await prisma.payment.findFirst({
       where: {

@@ -1,13 +1,56 @@
 import Razorpay from 'razorpay';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import prisma from './database.js';
+
+/**
+ * Get dynamic Razorpay credentials from DB or fallback to ENV
+ */
+export const getRazorpayConfig = async () => {
+    try {
+        const dbConfig = await prisma.systemConfiguration.findMany({
+            where: {
+                key: { in: ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'] }
+            }
+        });
+
+        const keyId = dbConfig.find(c => c.key === 'RAZORPAY_KEY_ID')?.value || config.RAZORPAY_KEY_ID;
+        const keySecret = dbConfig.find(c => c.key === 'RAZORPAY_KEY_SECRET')?.value || config.RAZORPAY_KEY_SECRET;
+        const webhookSecret = config.RAZORPAY_WEBHOOK_SECRET;
+
+        return { keyId, keySecret, webhookSecret };
+    } catch (error) {
+        return {
+            keyId: config.RAZORPAY_KEY_ID,
+            keySecret: config.RAZORPAY_KEY_SECRET,
+            webhookSecret: config.RAZORPAY_WEBHOOK_SECRET
+        };
+    }
+};
+
+/**
+ * Get a dynamic Razorpay instance
+ */
+export const getRazorpayInstance = async () => {
+  const { keyId, keySecret } = await getRazorpayConfig();
+  
+  if (!keyId || !keySecret) {
+    return null;
+  }
+
+  return new Razorpay({
+    key_id: keyId,
+    key_secret: keySecret,
+  });
+};
 
 /**
  * Check if Razorpay is configured
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-export const isRazorpayConfigured = () => {
-  return !!(config.RAZORPAY_KEY_ID && config.RAZORPAY_KEY_SECRET);
+export const isRazorpayConfigured = async () => {
+  const { keyId, keySecret } = await getRazorpayConfig();
+  return !!(keyId && keySecret);
 };
 
 /**

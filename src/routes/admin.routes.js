@@ -32,6 +32,7 @@ import adminNotificationRoutes from './admin.notification.routes.js';
 import adminThemeRoutes from './admin.theme.routes.js';
 import adminSuccessStoryRoutes from './admin.successStory.routes.js';
 import verificationRoutes from './verification.routes.js'; // Added to enable verification queue
+import * as configController from '../controllers/config.controller.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() }); // ADDED: Memory storage for Excel
@@ -234,5 +235,9 @@ router.post(
   '/moderation/bulk',
   adminController.bulkModeration
 );
+
+// --- ADDED: System Settings ---
+router.get('/settings', configController.getAllSettings);
+router.post('/settings/razorpay', configController.updateRazorpaySettings);
 
 export default router;
