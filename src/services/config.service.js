@@ -9,24 +9,30 @@ class ConfigService {
    * Get all system configurations grouped by group
    */
   async getAllConfig() {
-    const configs = await prisma.systemConfiguration.findMany({
-      orderBy: { group: 'asc' }
-    });
-    
-    // Group them for easier UI rendering
-    return configs.reduce((acc, config) => {
-      const group = config.group;
-      if (!acc[group]) acc[group] = [];
+    try {
+      const configs = await prisma.systemConfiguration.findMany({
+        orderBy: { group: 'asc' }
+      });
       
-      // Mask secret values
-      const sanitized = { ...config };
-      if (config.isSecret && config.value) {
-        sanitized.value = '********';
-      }
-      
-      acc[group].push(sanitized);
-      return acc;
-    }, {});
+      // Group them for easier UI rendering
+      return configs.reduce((acc, config) => {
+        const group = config.group;
+        if (!acc[group]) acc[group] = [];
+        
+        // Mask secret values
+        const sanitized = { ...config };
+        if (config.isSecret && config.value) {
+          sanitized.value = '********';
+        }
+        
+        acc[group].push(sanitized);
+        return acc;
+      }, {});
+    } catch (error) {
+      logger.warn('Failed to fetch system configurations. This might be due to pending migrations:', error.message);
+      // Return empty object instead of crashing to keep UI functional
+      return {};
+    }
   }
 
   /**

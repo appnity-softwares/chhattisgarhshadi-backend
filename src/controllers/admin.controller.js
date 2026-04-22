@@ -444,84 +444,95 @@ export const adminCreateUserWithProfile = asyncHandler(async (req, res) => {
   } = req.body;
 
   // 1. Create User & Profile in a transaction
-  const result = await prisma.$transaction(async (tx) => {
-    // Check if user already exists
-    if (phone) {
-      const existingUser = await tx.user.findFirst({
-        where: { phone, countryCode }
-      });
-      if (existingUser) {
-        throw new ApiError(HTTP_STATUS.CONFLICT, 'User with this phone number already exists');
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Check if user already exists
+      if (phone) {
+        const existingUser = await tx.user.findFirst({
+          where: { phone, countryCode }
+        });
+        if (existingUser) {
+          throw new ApiError(HTTP_STATUS.CONFLICT, `User with phone ${countryCode}${phone} already exists`);
+        }
       }
-    }
 
-    if (email) {
-      const existingEmail = await tx.user.findUnique({
-        where: { email }
-      });
-      if (existingEmail) {
-        throw new ApiError(HTTP_STATUS.CONFLICT, 'User with this email already exists');
+      if (email) {
+        const existingEmail = await tx.user.findUnique({
+          where: { email }
+        });
+        if (existingEmail) {
+          throw new ApiError(HTTP_STATUS.CONFLICT, `User with email ${email} already exists`);
+        }
       }
-    }
 
-    // Create User
-    const user = await tx.user.create({
-      data: {
-        phone: phone || null,
-        countryCode: countryCode || '+91',
-        email: email || null,
-        role: role || 'USER',
-        isPhoneVerified: !!phone,
-        phoneVerifiedAt: phone ? new Date() : null,
-        isEmailVerified: !!email,
-        emailVerifiedAt: email ? new Date() : null,
-        isActive: true,
-      }
+      // Create User
+      const user = await tx.user.create({
+        data: {
+          phone: phone || null,
+          countryCode: countryCode || '+91',
+          email: email || null,
+          role: role || 'USER',
+          isPhoneVerified: !!phone,
+          phoneVerifiedAt: phone ? new Date() : null,
+          isEmailVerified: !!email,
+          emailVerifiedAt: email ? new Date() : null,
+          isActive: true,
+        }
+      });
+
+      // Create Profile with defaults for optional fields
+      const profile = await tx.profile.create({
+        data: {
+          userId: user.id,
+          firstName: profileData.firstName,
+          lastName: profileData.lastName,
+          gender: profileData.gender,
+          dateOfBirth: new Date(profileData.dateOfBirth),
+          maritalStatus: profileData.maritalStatus || 'NEVER_MARRIED',
+          religion: profileData.religion || 'HINDU',
+          motherTongue: profileData.motherTongue || 'CHHATTISGARHI',
+          category: profileData.category || null,
+          caste: profileData.caste || null,
+          subCaste: profileData.subCaste || null,
+          nativeVillage: profileData.nativeVillage || null,
+          city: profileData.city,
+          state: profileData.state || 'Chhattisgarh',
+          country: profileData.country || 'India',
+          speaksChhattisgarhi: profileData.speaksChhattisgarhi ?? true,
+
+          // Additional Fields
+          height: profileData.height ? parseInt(profileData.height) : null,
+          highestEducation: profileData.highestEducation || null,
+          occupation: profileData.occupation || null,
+          annualIncome: profileData.annualIncome || null,
+          fatherOccupation: profileData.fatherOccupation || null,
+          familyIncome: profileData.familyIncome || null,
+          bio: profileData.bio || null,
+
+          isDraft: false,
+          isPublished: true,
+          publishedAt: new Date(),
+        }
+      });
+
+      return { user, profile };
     });
 
-    // Create Profile
-    const profile = await tx.profile.create({
-      data: {
-        userId: user.id,
-        firstName: profileData.firstName,
-        lastName: profileData.lastName,
-        gender: profileData.gender,
-        dateOfBirth: new Date(profileData.dateOfBirth),
-        maritalStatus: profileData.maritalStatus,
-        religion: profileData.religion,
-        motherTongue: profileData.motherTongue,
-        category: profileData.category,
-        caste: profileData.caste,
-        subCaste: profileData.subCaste,
-        nativeVillage: profileData.nativeVillage,
-        city: profileData.city,
-        state: profileData.state,
-        country: profileData.country || 'India',
-        speaksChhattisgarhi: profileData.speaksChhattisgarhi ?? true,
+    await logAdminAction(req, 'USER_CREATED_WITH_PROFILE', `Created user ${result.user.id} and profile`, { userId: result.user.id });
 
-        // NEW: Saved Additional Fields
-        height: profileData.height ? parseInt(profileData.height) : null,
-        highestEducation: profileData.highestEducation || null,
-        occupation: profileData.occupation || null,
-        annualIncome: profileData.annualIncome || null,
-        fatherOccupation: profileData.fatherOccupation || null,
-        familyIncome: profileData.familyIncome || null,
-        bio: profileData.bio || null,
-
-        isDraft: false,
-        isPublished: true,
-        publishedAt: new Date(),
-      }
-    });
-
-    return { user, profile };
-  });
-
-  await logAdminAction(req, 'USER_CREATED_WITH_PROFILE', `Created user ${result.user.id} and profile`, { userId: result.user.id });
-
-  res.status(HTTP_STATUS.CREATED).json(
-    new ApiResponse(HTTP_STATUS.CREATED, result, 'User and profile created successfully by Admin')
-  );
+    return res.status(HTTP_STATUS.CREATED).json(
+      new ApiResponse(HTTP_STATUS.CREATED, result, 'User and profile created successfully by Admin')
+    );
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    
+    // Provide a clearer message for Prisma errors
+    logger.error('Admin user creation failed:', error);
+    throw new ApiError(
+      HTTP_STATUS.BAD_REQUEST, 
+      `Failed to create profile: ${error.message}. Please check if all required fields (Name, Gender, DOB, City) are correct.`
+    );
+  }
 });
 
 /**
