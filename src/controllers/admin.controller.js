@@ -422,8 +422,22 @@ export const adminCreateProfile = asyncHandler(async (req, res) => {
  */
 export const adminUpdateProfile = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const profile = await profileService.updateProfile(parseInt(userId), req.body);
-  await logAdminAction(req, 'PROFILE_UPDATED', `Updated profile for user ${userId}`, { userId, update: req.body });
+  const updateData = { ...req.body };
+
+  // Format date of birth if provided
+  if (updateData.dateOfBirth) {
+    updateData.dateOfBirth = new Date(updateData.dateOfBirth);
+  }
+
+  // Safe height parsing
+  if (updateData.hasOwnProperty('height')) {
+    updateData.height = (updateData.height && !isNaN(parseInt(updateData.height))) 
+      ? parseInt(updateData.height) 
+      : null;
+  }
+
+  const profile = await profileService.updateProfile(parseInt(userId), updateData);
+  await logAdminAction(req, 'PROFILE_UPDATED', `Updated profile for user ${userId}`, { userId, update: updateData });
   res.status(HTTP_STATUS.OK).json(new ApiResponse(HTTP_STATUS.OK, profile, 'Profile updated successfully by Admin'));
 });
 
