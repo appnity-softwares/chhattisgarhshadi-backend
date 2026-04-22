@@ -45,6 +45,25 @@ const profileSearchInclude = {
 
 const sanitizeProfileInput = (data) => {
   const profileData = { ...(data || {}) };
+
+  // Fields that should be numbers
+  const intFields = ['height', 'weight'];
+  const intFieldsWithDefaultZero = ['numberOfBrothers', 'numberOfSisters', 'brothersMarried', 'sistersMarried', 'profileCompleteness', 'profileScore', 'viewCount'];
+
+  intFields.forEach(field => {
+    if (profileData.hasOwnProperty(field)) {
+      const val = profileData[field];
+      profileData[field] = (val === '' || val === null || val === undefined) ? null : parseInt(val, 10) || null;
+    }
+  });
+
+  intFieldsWithDefaultZero.forEach(field => {
+    if (profileData.hasOwnProperty(field)) {
+      const val = profileData[field];
+      profileData[field] = (val === '' || val === null || val === undefined) ? 0 : parseInt(val, 10) || 0;
+    }
+  });
+
   delete profileData.intercasteAllowed;
   return profileData;
 };

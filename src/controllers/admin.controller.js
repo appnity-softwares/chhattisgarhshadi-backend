@@ -519,6 +519,7 @@ export const adminCreateUserWithProfile = asyncHandler(async (req, res) => {
 
           // Additional Fields (Safe numeric parsing)
           height: (profileData.height && !isNaN(parseInt(profileData.height))) ? parseInt(profileData.height) : null,
+          weight: (profileData.weight && !isNaN(parseInt(profileData.weight))) ? parseInt(profileData.weight) : null,
           highestEducation: profileData.highestEducation || null,
           occupation: profileData.occupation || null,
           annualIncome: profileData.annualIncome || null,
