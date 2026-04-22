@@ -94,7 +94,7 @@ export const createUserWithProfileSchema = z.object({
       message: 'Phone must be at least 10 characters',
     }),
     countryCode: z.string().default('+91'),
-    email: z.string().email('Invalid email address').optional().nullable(),
+    email: z.preprocess((val) => (val === '' ? null : val), z.string().email('Invalid email address').optional().nullable()),
     role: z.nativeEnum(UserRole).default(UserRole.USER),
 
     // Profile Info
