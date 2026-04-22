@@ -64,6 +64,22 @@ const sanitizeProfileInput = (data) => {
     }
   });
 
+  // Convert Enum strings to UPPERCASE for Prisma compatibility
+  const enumFields = ['gender', 'maritalStatus', 'religion', 'motherTongue'];
+  enumFields.forEach(field => {
+    if (profileData[field] && typeof profileData[field] === 'string') {
+      profileData[field] = profileData[field].toUpperCase().replace(/\s+/g, '_');
+    }
+  });
+
+  // Remove relation fields if they are sent as empty strings
+  if (typeof profileData.education === 'string') {
+    if (profileData.education && !profileData.highestEducation) {
+      profileData.highestEducation = profileData.education;
+    }
+    delete profileData.education;
+  }
+
   delete profileData.intercasteAllowed;
   return profileData;
 };
