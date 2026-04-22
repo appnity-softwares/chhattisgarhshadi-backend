@@ -500,8 +500,8 @@ export const adminCreateUserWithProfile = asyncHandler(async (req, res) => {
           country: profileData.country || 'India',
           speaksChhattisgarhi: profileData.speaksChhattisgarhi ?? true,
 
-          // Additional Fields
-          height: profileData.height ? parseInt(profileData.height) : null,
+          // Additional Fields (Safe numeric parsing)
+          height: (profileData.height && !isNaN(parseInt(profileData.height))) ? parseInt(profileData.height) : null,
           highestEducation: profileData.highestEducation || null,
           occupation: profileData.occupation || null,
           annualIncome: profileData.annualIncome || null,

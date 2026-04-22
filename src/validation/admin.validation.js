@@ -90,14 +90,16 @@ export const updateReportSchema = z.object({
 export const createUserWithProfileSchema = z.object({
   body: z.object({
     // User Account Info
-    phone: z.string().min(10, 'Phone must be at least 10 characters').max(15).optional(),
+    phone: z.string().optional().refine(val => !val || (val.length >= 10 && val.length <= 15), {
+      message: 'Phone must be at least 10 characters',
+    }),
     countryCode: z.string().default('+91'),
     email: z.string().email('Invalid email address').optional().nullable(),
     role: z.nativeEnum(UserRole).default(UserRole.USER),
 
     // Profile Info
     firstName: z.string().min(2, 'First name too short'),
-    lastName: z.string().min(1, 'Last name required'),
+    lastName: z.string().optional().default(''),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
     dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
       message: 'Invalid date of birth',
