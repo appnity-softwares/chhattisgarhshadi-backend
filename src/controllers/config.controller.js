@@ -52,11 +52,13 @@ export const resetConfig = asyncHandler(async (req, res) => {
  */
 export const getPublicConfigs = asyncHandler(async (req, res) => {
     const settings = await configService.getAllConfig();
-    // Return only non-secret, general/ui settings
-    const publicSettings = {
-        GENERAL: settings.GENERAL || [],
-        UI: settings.UI || []
-    };
+    
+    // Return a flat array of non-secret, general/ui settings for compatibility with frontend find()
+    const publicSettings = [
+        ...(settings.GENERAL || []),
+        ...(settings.UI || [])
+    ];
+    
     res.status(HTTP_STATUS.OK).json(
         new ApiResponse(HTTP_STATUS.OK, publicSettings, 'Public settings retrieved successfully')
     );
