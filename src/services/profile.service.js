@@ -488,6 +488,30 @@ export const addPhoto = async (userId, mediaData, mediaType) => {
         },
       });
 
+      // If it's a profile photo, update the User's profilePicture field and mark as default
+      if (mediaType === 'PROFILE_PHOTO') {
+        await tx.user.update({
+          where: { id: userId },
+          data: { profilePicture: media.url }
+        });
+        
+        // Also mark this as the default photo
+        await tx.media.update({
+          where: { id: media.id },
+          data: { isDefault: true }
+        });
+
+        // Unmark other photos as default for this user
+        await tx.media.updateMany({
+          where: { 
+            userId, 
+            id: { not: media.id },
+            type: 'PROFILE_PHOTO'
+          },
+          data: { isDefault: false }
+        });
+      }
+
       return media;
     });
 
