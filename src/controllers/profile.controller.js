@@ -51,12 +51,7 @@ export const getProfileByUserId = asyncHandler(async (req, res) => {
     }
   }
 
-  // Cache the profile data (viewer-independent data only)
-  const profile = await cacheHelper.getOrFetch(
-    `profile:userId:${userId}`,
-    async () => await profileService.getProfileByUserId(userId, currentUserId),
-    3600 // 1 hour
-  );
+  const profile = await profileService.getProfileByUserId(userId, currentUserId);
   res
     .status(HTTP_STATUS.OK)
     .json(new ApiResponse(HTTP_STATUS.OK, profile, 'Profile retrieved successfully'));
@@ -80,9 +75,6 @@ export const getProfileContactInfo = asyncHandler(async (req, res) => {
 export const updateMyProfile = asyncHandler(async (req, res) => {
   // req.body is now pre-validated and safe
   const profile = await profileService.updateProfile(req.user.id, req.body);
-
-  // Invalidate cache
-  await cacheHelper.del(`profile:userId:${req.user.id}`);
 
   res
     .status(HTTP_STATUS.OK)

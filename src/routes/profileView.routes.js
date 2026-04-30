@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { profileViewController } from '../controllers/profileView.controller.js';
-import { authenticate, requireCompleteProfile } from '../middleware/auth.js';
+import { authenticate, requireProfileForBrowsing } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   logProfileViewSchema,
@@ -9,8 +9,8 @@ import {
 
 const router = Router();
 
-// All view routes require authentication and a complete profile
-router.use(authenticate, requireCompleteProfile);
+// Profile view history is part of browsing and should not require 50% completion.
+router.use(authenticate, requireProfileForBrowsing);
 
 router
   .route('/')

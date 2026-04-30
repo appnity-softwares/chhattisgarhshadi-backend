@@ -24,6 +24,7 @@ import prisma from '../config/database.js';
 
 import { logger } from '../config/logger.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
+import { PROFILE_VISIBILITY } from '../utils/constants.js';
 
 // ============================================
 // CG Districts grouped by Division
@@ -177,7 +178,7 @@ export const calculateMatchScore = async (userId, targetUserId) => {
                 include: {
                     partnerPreference: true,
                     user: { select: { id: true, role: true, preferredLanguage: true, lastLoginAt: true, createdAt: true } },
-                    media: { where: { type: 'PROFILE_PHOTO' }, take: 1 },
+                    media: { where: { type: 'PROFILE_PHOTO', isVisible: true, isPrivate: false }, take: 1 },
                 },
             }),
             prisma.profile.findUnique({
@@ -185,7 +186,7 @@ export const calculateMatchScore = async (userId, targetUserId) => {
                 include: {
                     partnerPreference: true,
                     user: { select: { id: true, role: true, preferredLanguage: true, lastLoginAt: true, createdAt: true } },
-                    media: { where: { type: 'PROFILE_PHOTO' }, take: 1 },
+                    media: { where: { type: 'PROFILE_PHOTO', isVisible: true, isPrivate: false }, take: 1 },
                 },
             }),
         ]);
@@ -520,28 +521,52 @@ export const getDailyRecommendations = async (userId, limit = 20) => {
             include: {
                 partnerPreference: true,
                 user: { select: { id: true, role: true, preferredLanguage: true, lastLoginAt: true, createdAt: true } },
-                media: { where: { type: 'PROFILE_PHOTO' }, take: 1 },
+                media: { where: { type: 'PROFILE_PHOTO', isVisible: true, isPrivate: false }, take: 1 },
             },
         });
 
         if (!userProfile) return [];
 
-        const targetGender = userProfile.gender === 'MALE' ? 'FEMALE' : 'MALE';
         const preferences = userProfile.partnerPreference;
 
         // ========================================
         // 2. Build Hard Filters (Mandatory)
         // ========================================
         const hardFilter = {
-            gender: targetGender,
             userId: { not: userId },
             isPublished: true,
             user: {
+                isActive: true,
                 isBanned: false,
                 // Exclude blocked users in both directions
                 blockedBy: { none: { blockerId: userId } },
                 blocksGiven: { none: { blockedId: userId } },
             },
+            AND: [
+                {
+                    OR: [
+                        { user: { profilePrivacySettings: { is: null } } },
+                        { user: { profilePrivacySettings: { is: { profileVisibility: { not: PROFILE_VISIBILITY.HIDDEN } } } } },
+                    ],
+                },
+                {
+                    OR: [
+                        { user: { searchVisibilitySettings: { is: null } } },
+                        {
+                            user: {
+                                searchVisibilitySettings: {
+                                    is: {
+                                        showInSearch: true,
+                                        showInSuggestions: true,
+                                        hideFromSearch: false,
+                                        profilePaused: false,
+                                    },
+                                },
+                            },
+                        },
+                    ],
+                },
+            ],
         };
 
         // --- Religion filter (hard filter if preferences set) ---
@@ -602,7 +627,7 @@ export const getDailyRecommendations = async (userId, limit = 20) => {
                 partnerPreference: true,
                 user: { select: { id: true, role: true, preferredLanguage: true, lastLoginAt: true, createdAt: true } },
                 media: {
-                    where: { type: 'PROFILE_PHOTO' },
+                    where: { type: 'PROFILE_PHOTO', isVisible: true, isPrivate: false },
                     take: 1,
                     include: { privacySettings: true },
                 },

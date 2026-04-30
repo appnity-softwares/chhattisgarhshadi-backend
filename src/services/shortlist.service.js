@@ -16,7 +16,13 @@ const userPublicSelect = {
   preferredLanguage: true,
   profile: {
     include: {
-      media: true, // Include media for profile photos
+      media: {
+        where: {
+          type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+          isVisible: true,
+          isPrivate: false,
+        },
+      },
     },
   },
 };
@@ -149,7 +155,18 @@ export const getMyShortlist = async (userId, query) => {
   const { page, limit, skip } = getPaginationParams(query);
 
   try {
-    const where = { userId };
+    const where = {
+      userId,
+      shortlistedUser: {
+        isActive: true,
+        isBanned: false,
+        profile: {
+          is: {
+            isPublished: true,
+          },
+        },
+      },
+    };
 
     const [shortlistEntries, total] = await Promise.all([
       prisma.shortlist.findMany({

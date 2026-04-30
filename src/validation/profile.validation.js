@@ -160,6 +160,7 @@ export const searchProfilesSchema = z.object({
     state: z.string().optional(),
     isVerified: z.coerce.boolean().optional(),
     withPhoto: z.coerce.boolean().optional(),
+    minCompletion: z.coerce.number().min(0).max(100).optional(),
   }),
 });
 

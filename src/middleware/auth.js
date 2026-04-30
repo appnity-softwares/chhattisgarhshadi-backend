@@ -149,7 +149,7 @@ export const requireCompleteProfile = async (req, res, next) => {
       return next(new ApiError(HTTP_STATUS.FORBIDDEN, 'Profile not found. Please create your profile first.'));
     }
 
-    // Production eligibility gate for discovery/interaction surfaces.
+    // Production eligibility gate for sensitive interaction surfaces.
     const profileCompleteness = req.user.profile.profileCompleteness || 0;
     const requiredCompleteness = 50;
 
@@ -166,6 +166,27 @@ export const requireCompleteProfile = async (req, res, next) => {
 
   } catch (error) {
     logger.error('Profile check error:', error.message);
+    return next(new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error checking profile status'));
+  }
+};
+
+/**
+ * Require only that the user has a profile. Browsing/viewing discovery surfaces
+ * must stay available even while profile completion is still in progress.
+ */
+export const requireProfileForBrowsing = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return next(new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Authentication required'));
+    }
+
+    if (!req.user.profile) {
+      return next(new ApiError(HTTP_STATUS.FORBIDDEN, 'Profile not found. Please create your profile first.'));
+    }
+
+    next();
+  } catch (error) {
+    logger.error('Profile browse check error:', error.message);
     return next(new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error checking profile status'));
   }
 };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { profileController } from '../controllers/profile.controller.js';
-import { authenticate, requireCompleteProfile } from '../middleware/auth.js';
+import { authenticate, requireCompleteProfile, requireProfileForBrowsing } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   createProfileSchema,
@@ -9,8 +9,6 @@ import {
   objectIdSchema,
   mediaIdSchema
 } from '../validation/profile.validation.js';
-// ADDED: Import cache middleware for performance
-import { cacheProfile } from '../middleware/cache.middleware.js';
 
 const router = Router();
 
@@ -29,7 +27,7 @@ router.delete('/me', profileController.deleteMyProfile);
 // Search profiles - cached for 5 minutes
 router.get(
   '/search',
-  requireCompleteProfile,
+  requireProfileForBrowsing,
   validate(searchProfilesSchema),
   profileController.searchProfiles
 );
@@ -43,11 +41,11 @@ router.delete(
 // Get Recommendations (Smart Algorithm)
 router.get(
   '/recommendations',
-  requireCompleteProfile,
+  requireProfileForBrowsing,
   profileController.getRecommendations
 );
 
-// Get public profile by userId - cached for 5 minutes
+// Get public profile by userId
 router.get(
   '/:userId/contact',
   requireCompleteProfile,
@@ -57,9 +55,8 @@ router.get(
 
 router.get(
   '/:userId',
-  requireCompleteProfile,
+  requireProfileForBrowsing,
   validate(objectIdSchema),
-  cacheProfile,
   profileController.getProfileByUserId
 );
 

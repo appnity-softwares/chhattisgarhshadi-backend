@@ -35,6 +35,8 @@ const profileSearchInclude = {
   media: {
     where: {
       type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+      isVisible: true,
+      isPrivate: false,
     },
     include: {
       privacySettings: true,
@@ -51,14 +53,14 @@ const sanitizeProfileInput = (data) => {
   const intFieldsWithDefaultZero = ['numberOfBrothers', 'numberOfSisters', 'brothersMarried', 'sistersMarried', 'profileCompleteness', 'profileScore', 'viewCount'];
 
   intFields.forEach(field => {
-    if (profileData.hasOwnProperty(field)) {
+    if (Object.prototype.hasOwnProperty.call(profileData, field)) {
       const val = profileData[field];
       profileData[field] = (val === '' || val === null || val === undefined) ? null : parseInt(val, 10) || null;
     }
   });
 
   intFieldsWithDefaultZero.forEach(field => {
-    if (profileData.hasOwnProperty(field)) {
+    if (Object.prototype.hasOwnProperty.call(profileData, field)) {
       const val = profileData[field];
       profileData[field] = (val === '' || val === null || val === undefined) ? 0 : parseInt(val, 10) || 0;
     }
@@ -91,9 +93,45 @@ const transformMedia = (media = []) =>
     thumbnailUrl: item.thumbnailUrl,
     type: item.type,
     isProfilePicture: item.isDefault,
+    isPrivate: item.isPrivate,
+    isVisible: item.isVisible,
     privacySettings: item.privacySettings,
     createdAt: item.createdAt,
   }));
+
+const appendAnd = (where, condition) => {
+  where.AND = [...(where.AND || []), condition];
+};
+
+const getMinCompletionFilter = (minCompletion) => {
+  if (minCompletion === undefined || minCompletion === null || minCompletion === '') return 0;
+  const parsed = Number(minCompletion);
+  return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+};
+
+const visibleProfilePrivacyFilter = {
+  OR: [
+    { user: { profilePrivacySettings: { is: null } } },
+    { user: { profilePrivacySettings: { is: { profileVisibility: { not: PROFILE_VISIBILITY.HIDDEN } } } } },
+  ],
+};
+
+const visibleSearchSettingsFilter = {
+  OR: [
+    { user: { searchVisibilitySettings: { is: null } } },
+    {
+      user: {
+        searchVisibilitySettings: {
+          is: {
+            showInSearch: true,
+            hideFromSearch: false,
+            profilePaused: false,
+          },
+        },
+      },
+    },
+  ],
+};
 
 const serializeProfile = (profile, isShortlisted = false) => {
   if (!profile) return null;
@@ -183,6 +221,10 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
     const profile = await getProfileRecordByUserId(userId);
 
     if (!profile) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
+    }
+
+    if (currentUserId && userId !== currentUserId && !profile.isPublished) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, ERROR_MESSAGES.PROFILE_NOT_FOUND);
     }
 
@@ -294,28 +336,21 @@ export const searchProfiles = async (query, currentUserId = null) => {
 
     const where = {
       isPublished: true,
-      profileCompleteness: { gte: Number(minCompletion) || 50 },
+      profileCompleteness: { gte: getMinCompletionFilter(minCompletion) },
       user: {
         isActive: true,
         isBanned: false,
       },
     };
 
+    appendAnd(where, visibleProfilePrivacyFilter);
+    appendAnd(where, visibleSearchSettingsFilter);
+
     if (currentUserId) {
       const blockedIds = Array.from(await blockService.getAllBlockedUserIds(currentUserId));
       blockedIds.push(currentUserId);
       where.userId = { notIn: blockedIds };
 
-      if (!gender) {
-        const currentUserProfile = await prisma.profile.findUnique({
-          where: { userId: currentUserId },
-          select: { gender: true },
-        });
-
-        if (currentUserProfile?.gender) {
-          where.gender = currentUserProfile.gender === 'MALE' ? 'FEMALE' : 'MALE';
-        }
-      }
     }
 
     if (gender) where.gender = gender;
@@ -383,6 +418,8 @@ export const searchProfiles = async (query, currentUserId = null) => {
       where.media = {
         some: {
           type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+          isVisible: true,
+          isPrivate: false,
         },
       };
     }
@@ -405,10 +442,11 @@ export const searchProfiles = async (query, currentUserId = null) => {
     let orderBy = [{ profileCompleteness: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
 
     if (type === 'featured') {
-      where.profileCompleteness = { gte: 70 };
       where.media = {
         some: {
           type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
+          isVisible: true,
+          isPrivate: false,
         },
       };
       orderBy = [{ viewCount: 'desc' }, { profileCompleteness: 'desc' }, { id: 'desc' }];
