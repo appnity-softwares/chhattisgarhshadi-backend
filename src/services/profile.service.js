@@ -136,6 +136,27 @@ const visibleSearchSettingsFilter = {
 const serializeProfile = (profile, isShortlisted = false) => {
   if (!profile) return null;
 
+  // Extract relationship from user object if available
+  let relationship = null;
+  if (profile.user) {
+    const outgoing = profile.user.receivedMatchRequests?.[0]; // Current user sent this
+    const incoming = profile.user.sentMatchRequests?.[0];   // Other user sent this
+    
+    if (outgoing) {
+      relationship = {
+        status: outgoing.status === 'ACCEPTED' ? 'accepted' : 
+                outgoing.status === 'PENDING' ? 'sent' : 'declined',
+        matchId: outgoing.id
+      };
+    } else if (incoming) {
+      relationship = {
+        status: incoming.status === 'ACCEPTED' ? 'accepted' : 
+                incoming.status === 'PENDING' ? 'received' : 'declined',
+        matchId: incoming.id
+      };
+    }
+  }
+
   return {
     ...profile,
     user: profile.user
@@ -150,6 +171,7 @@ const serializeProfile = (profile, isShortlisted = false) => {
     age: calculateAge(profile.dateOfBirth),
     profileCompleteness: profile.profileCompleteness || 0,
     isShortlisted,
+    relationship,
   };
 };
 
@@ -522,7 +544,24 @@ export const searchProfiles = async (query, currentUserId = null) => {
         where,
         skip: cursor,
         take: limit,
-        include: profileSearchInclude,
+        include: {
+          ...profileSearchInclude,
+          user: {
+            select: {
+              ...profileUserSelect,
+              receivedMatchRequests: currentUserId ? {
+                where: { senderId: currentUserId },
+                take: 1,
+                orderBy: { updatedAt: 'desc' }
+              } : undefined,
+              sentMatchRequests: currentUserId ? {
+                where: { receiverId: currentUserId },
+                take: 1,
+                orderBy: { updatedAt: 'desc' }
+              } : undefined,
+            }
+          }
+        },
         orderBy,
       }),
       prisma.profile.count({ where }),

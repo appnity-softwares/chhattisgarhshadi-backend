@@ -175,7 +175,20 @@ export const getMyShortlist = async (userId, query) => {
         take: limit,
         include: {
           shortlistedUser: { // Get the full profile of the user who was shortlisted
-            select: userPublicSelect,
+            select: {
+              ...userPublicSelect,
+              // Check for incoming or outgoing match requests
+              receivedMatchRequests: {
+                where: { senderId: userId },
+                take: 1,
+                orderBy: { updatedAt: 'desc' }
+              },
+              sentMatchRequests: {
+                where: { receiverId: userId },
+                take: 1,
+                orderBy: { updatedAt: 'desc' }
+              }
+            },
           },
         },
         orderBy: {
@@ -188,11 +201,35 @@ export const getMyShortlist = async (userId, query) => {
     const pagination = getPaginationMetadata(page, limit, total);
 
     // Format the response to be a list of user profiles, not shortlist entries
-    const profiles = shortlistEntries.map(entry => ({
-      ...entry.shortlistedUser,
-      shortlistNote: entry.note, // Optionally include the note
-      shortlistedAt: entry.createdAt,
-    }));
+    const profiles = shortlistEntries.map(entry => {
+      const user = entry.shortlistedUser;
+      
+      // Determine relationship status
+      const outgoing = user.receivedMatchRequests?.[0]; // Current user sent this
+      const incoming = user.sentMatchRequests?.[0];   // Other user sent this
+      
+      let relationship = null;
+      if (outgoing) {
+        relationship = {
+          status: outgoing.status === 'ACCEPTED' ? 'accepted' : 
+                  outgoing.status === 'PENDING' ? 'sent' : 'declined',
+          matchId: outgoing.id
+        };
+      } else if (incoming) {
+        relationship = {
+          status: incoming.status === 'ACCEPTED' ? 'accepted' : 
+                  incoming.status === 'PENDING' ? 'received' : 'declined',
+          matchId: incoming.id
+        };
+      }
+
+      return {
+        ...user,
+        relationship,
+        shortlistNote: entry.note,
+        shortlistedAt: entry.createdAt,
+      };
+    });
 
     return {
       profiles,
