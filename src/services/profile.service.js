@@ -392,14 +392,24 @@ export const searchProfiles = async (query, currentUserId = null) => {
 
     }
 
-    // If explicit gender filter is provided, respect it. Otherwise show all
-    // eligible profiles; do not force opposite-gender discovery by default.
+    // If explicit gender filter is provided, respect it. 
+    // Otherwise, default to showing the opposite gender for the current user.
     if (gender) {
       const g = gender.toUpperCase();
       if (g === 'BOTH' || g === 'ALL' || g === 'MIX') {
         // Don't apply gender filter to show everyone
       } else {
         where.gender = g;
+      }
+    } else if (currentUserId && currentUserId > 0) {
+      // Auto-discover opposite gender if user is logged in and didn't specify a preference
+      const viewerProfile = await prisma.profile.findUnique({
+        where: { userId: currentUserId },
+        select: { gender: true }
+      });
+      
+      if (viewerProfile?.gender) {
+        where.gender = viewerProfile.gender === 'MALE' ? 'FEMALE' : 'MALE';
       }
     }
     if (maritalStatus) where.maritalStatus = maritalStatus;
