@@ -353,7 +353,29 @@ export const searchProfiles = async (query, currentUserId = null) => {
 
     }
 
-    if (gender) where.gender = gender;
+    // ── GENDER SMART FILTERING ──
+    // 1. If explicit gender filter is provided, respect it
+    if (gender) {
+      const g = gender.toUpperCase();
+      if (g === 'BOTH' || g === 'ALL' || g === 'MIX') {
+        // Don't apply gender filter to show everyone
+      } else {
+        where.gender = g;
+      }
+    } 
+    // 2. If no gender specified and user is logged in, default to opposite gender
+    else if (currentUserId) {
+      const currentUserProfile = await prisma.profile.findUnique({
+        where: { userId: currentUserId },
+        select: { gender: true },
+      });
+
+      if (currentUserProfile?.gender === 'MALE') {
+        where.gender = 'FEMALE';
+      } else if (currentUserProfile?.gender === 'FEMALE') {
+        where.gender = 'MALE';
+      }
+    }
     if (maritalStatus) where.maritalStatus = maritalStatus;
     if (nativeVillage) where.nativeVillage = { contains: nativeVillage, mode: 'insensitive' };
     if (typeof speaksChhattisgarhi === 'boolean') where.speaksChhattisgarhi = speaksChhattisgarhi;
