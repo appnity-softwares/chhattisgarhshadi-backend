@@ -55,11 +55,14 @@ export const adminNotificationController = {
             await notificationService.sendPushNotification(
                 allTokens,
                 {
-                    notification: { title, body, image: imageUrl },
+                    title,
+                    body,
+                    imageUrl,
                     data: { 
                       type: 'SYSTEM_BROADCAST',
                       broadcastId: String(broadcast.id)
-                    }
+                    },
+                    notificationType: 'SYSTEM_BROADCAST'
                 }
             );
 

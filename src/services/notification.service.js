@@ -93,9 +93,13 @@ const _sendMulticastNotification = async (fcmTokens, payload) => {
       notification: {
         title: payload.title,
         body: payload.body,
+        image: payload.imageUrl || payload.image,
       },
       data: {
         ...payload.data,
+        title: String(payload.title || ''),
+        body: String(payload.body || ''),
+        image: String(payload.imageUrl || payload.image || ''),
         type: String(payload.data?.type || 'GENERAL'),
         timestamp: String(Date.now()),
       },
