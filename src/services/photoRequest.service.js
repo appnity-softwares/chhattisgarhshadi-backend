@@ -6,7 +6,7 @@ import { logger } from '../config/logger.js';
 import { blockService } from './block.service.js';
 import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
-import { logAdminAction } from './activityLog.service.js';
+import { createActivityLog } from './activityLog.service.js';
 import { isRateLimited } from './rateLimit.service.js';
 
 // Reusable select for public user data
@@ -17,6 +17,18 @@ const userPublicSelect = {
   preferredLanguage: true,
   profile: true,
 };
+
+const adminUserSelect = {
+  ...userPublicSelect,
+  email: true,
+  phone: true,
+};
+
+const mapAdminPhotoRequest = (request) => ({
+  ...request,
+  requesteeId: request.profileId,
+  requestee: request.profile,
+});
 
 /**
  * Create a new photo view request
@@ -231,49 +243,34 @@ export const getAdminPhotoRequests = async (query) => {
   
   if (search) {
     where.OR = [
-      { requester: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
-      { requester: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
-      { requestee: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
-      { requestee: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+      { requester: { email: { contains: search, mode: 'insensitive' } } },
+      { requester: { phone: { contains: search, mode: 'insensitive' } } },
+      { requester: { profile: { firstName: { contains: search, mode: 'insensitive' } } } },
+      { requester: { profile: { lastName: { contains: search, mode: 'insensitive' } } } },
+      { profile: { email: { contains: search, mode: 'insensitive' } } },
+      { profile: { phone: { contains: search, mode: 'insensitive' } } },
+      { profile: { profile: { firstName: { contains: search, mode: 'insensitive' } } } },
+      { profile: { profile: { lastName: { contains: search, mode: 'insensitive' } } } },
     ];
   }
 
   const [requests, total] = await Promise.all([
-    prisma.photoRequest.findMany({
+    prisma.photoViewRequest.findMany({
       where,
       include: {
-        requester: {
-          include: {
-            profile: {
-              include: {
-                user: {
-                  select: { id: true, email: true, role: true }
-                }
-              }
-            }
-          }
-        },
-        requestee: {
-          include: {
-            profile: {
-              include: {
-                user: {
-                  select: { id: true, email: true, role: true }
-                }
-              }
-            }
-          }
-        }
+        requester: { select: adminUserSelect },
+        profile: { select: adminUserSelect },
+        photo: true,
       },
       orderBy: { createdAt: 'desc' },
       skip,
       take: parseInt(limit, 10),
     }),
-    prisma.photoRequest.count({ where })
+    prisma.photoViewRequest.count({ where })
   ]);
 
   return {
-    requests,
+    requests: requests.map(mapAdminPhotoRequest),
     pagination: getPaginationMetadata(page, limit, total)
   };
 };
@@ -282,11 +279,12 @@ export const getAdminPhotoRequests = async (query) => {
  * [ADMIN] Update photo request status with admin override
  */
 export const updateAdminPhotoRequest = async (requestId, status, reason, adminId) => {
-  const request = await prisma.photoRequest.findUnique({
+  const request = await prisma.photoViewRequest.findUnique({
     where: { id: requestId },
     include: {
-      requester: { include: { user: true } },
-      requestee: { include: { user: true } }
+      requester: { select: adminUserSelect },
+      profile: { select: adminUserSelect },
+      photo: true,
     }
   });
 
@@ -294,38 +292,51 @@ export const updateAdminPhotoRequest = async (requestId, status, reason, adminId
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Photo request not found');
   }
 
-  const updatedRequest = await prisma.photoRequest.update({
+  const validUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const updatedRequest = await prisma.photoViewRequest.update({
     where: { id: requestId },
     data: {
       status,
-      responseReason: reason,
-      respondedAt: new Date(),
-      respondedBy: adminId
-    }
+      ...(status === PHOTO_REQUEST_STATUS.APPROVED && {
+        approvedAt: new Date(),
+        validUntil,
+      }),
+    },
+    include: {
+      requester: { select: adminUserSelect },
+      profile: { select: adminUserSelect },
+      photo: true,
+    },
   });
 
   // Log admin action
-  await logAdminAction(adminId, 'PHOTO_REQUEST_UPDATED', 
-    `Updated photo request ${requestId} to ${status}`, 
-    { requestId, status, reason }
-  );
+  await createActivityLog({
+    userId: adminId,
+    action: 'PHOTO_REQUEST_UPDATED',
+    description: `Updated photo request ${requestId} to ${status}`,
+    metadata: { requestId, status, reason },
+  });
 
   // Send notification to users
   if (status === 'APPROVED') {
-    await notificationService.sendNotification(
-      request.requesteeId,
-      'Your photo view request has been approved',
-      NOTIFICATION_TYPES.PHOTO_REQUEST_APPROVED
-    );
+    await notificationService.createNotification({
+      userId: request.requesterId,
+      type: NOTIFICATION_TYPES.PHOTO_REQUEST_APPROVED || 'PHOTO_REQUEST_APPROVED',
+      title: 'Photo Request Approved',
+      message: 'Your photo view request has been approved by admin.',
+      data: { requestId: String(requestId), reason: reason || '' },
+    });
   } else if (status === 'REJECTED') {
-    await notificationService.sendNotification(
-      request.requesterId,
-      'Your photo view request has been rejected',
-      NOTIFICATION_TYPES.PHOTO_REQUEST_REJECTED
-    );
+    await notificationService.createNotification({
+      userId: request.requesterId,
+      type: NOTIFICATION_TYPES.PHOTO_REQUEST_REJECTED || 'PHOTO_REQUEST_REJECTED',
+      title: 'Photo Request Rejected',
+      message: 'Your photo view request has been rejected by admin.',
+      data: { requestId: String(requestId), reason: reason || '' },
+    });
   }
 
-  return updatedRequest;
+  return mapAdminPhotoRequest(updatedRequest);
 };
 
 export const respondToRequest = async (userId, requestId, status) => {

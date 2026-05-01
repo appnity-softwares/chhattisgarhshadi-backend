@@ -16,6 +16,7 @@ import { contactRequestService } from '../services/contactRequest.service.js';
 import { photoRequestService } from '../services/photoRequest.service.js';
 import { chatModerationController } from '../controllers/chatModeration.controller.js';
 import { bulkModerationController } from '../controllers/bulkModeration.controller.js';
+import { logger } from '../config/logger.js';
 
 /**
  * [NEW] Admin Login
@@ -430,7 +431,7 @@ export const adminUpdateProfile = asyncHandler(async (req, res) => {
   }
 
   // Safe height parsing
-  if (updateData.hasOwnProperty('height')) {
+  if (Object.prototype.hasOwnProperty.call(updateData, 'height')) {
     updateData.height = (updateData.height && !isNaN(parseInt(updateData.height))) 
       ? parseInt(updateData.height) 
       : null;

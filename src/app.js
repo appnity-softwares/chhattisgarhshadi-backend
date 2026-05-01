@@ -125,6 +125,11 @@ app.use(cors(corsOptions));
 app.use(express.json({
   limit: '5mb', // Reduced from 10mb for security
   strict: true,
+  verify: (req, _res, buf) => {
+    if (req.originalUrl?.includes('/payments/webhook')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
 }));
 app.use(express.urlencoded({
   extended: true,

@@ -1,6 +1,6 @@
 import prisma from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
-import { HTTP_STATUS, ERROR_MESSAGES, PROFILE_VISIBILITY } from '../utils/constants.js';
+import { HTTP_STATUS, ERROR_MESSAGES, PROFILE_VISIBILITY, PHOTO_REQUEST_STATUS } from '../utils/constants.js';
 import { calculateAge } from '../utils/helpers.js';
 import { updateProfileCompleteness } from '../utils/profile.helpers.js';
 import { logger } from '../config/logger.js';
@@ -162,6 +162,43 @@ const wrapProfileResponse = (profile, isShortlisted = false) => {
   };
 };
 
+const filterMediaForViewer = async (profile, viewerId) => {
+  if (!profile?.media || !viewerId || viewerId === profile.userId) {
+    return profile;
+  }
+
+  const privatePhotoIds = profile.media
+    .filter(item => item.isPrivate)
+    .map(item => item.id);
+
+  let approvedPrivatePhotoIds = new Set();
+
+  if (privatePhotoIds.length > 0) {
+    const approvedRequests = await prisma.photoViewRequest.findMany({
+      where: {
+        requesterId: viewerId,
+        profileId: profile.userId,
+        photoId: { in: privatePhotoIds },
+        status: PHOTO_REQUEST_STATUS.APPROVED,
+        OR: [
+          { validUntil: null },
+          { validUntil: { gte: new Date() } },
+        ],
+      },
+      select: { photoId: true },
+    });
+
+    approvedPrivatePhotoIds = new Set(approvedRequests.map(request => request.photoId));
+  }
+
+  return {
+    ...profile,
+    media: profile.media.filter(item =>
+      item.isVisible && (!item.isPrivate || approvedPrivatePhotoIds.has(item.id))
+    ),
+  };
+};
+
 const getProfileRecordByUserId = (userId, include = profileInclude) =>
   prisma.profile.findFirst({
     where: {
@@ -247,7 +284,9 @@ export const getProfileByUserId = async (userId, currentUserId = null) => {
       isShortlisted = !!shortlist;
     }
 
-    return wrapProfileResponse(profile, isShortlisted);
+    const safeProfile = await filterMediaForViewer(profile, currentUserId);
+
+    return wrapProfileResponse(safeProfile, isShortlisted);
   } catch (error) {
     logger.error('Error in getProfileByUserId:', error);
     if (error instanceof ApiError) throw error;
@@ -261,7 +300,7 @@ export const getProfileContactInfo = async (viewerId, profileOwnerId) => {
   } catch (error) {
     logger.error('Error in getProfileContactInfo:', error);
     if (error instanceof ApiError) throw error;
-    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, `Debug Error: ${error.message} - ${error.stack}`);
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error retrieving contact info');
   }
 };
 
@@ -353,27 +392,14 @@ export const searchProfiles = async (query, currentUserId = null) => {
 
     }
 
-    // ── GENDER SMART FILTERING ──
-    // 1. If explicit gender filter is provided, respect it
+    // If explicit gender filter is provided, respect it. Otherwise show all
+    // eligible profiles; do not force opposite-gender discovery by default.
     if (gender) {
       const g = gender.toUpperCase();
       if (g === 'BOTH' || g === 'ALL' || g === 'MIX') {
         // Don't apply gender filter to show everyone
       } else {
         where.gender = g;
-      }
-    } 
-    // 2. If no gender specified and user is logged in, default to opposite gender
-    else if (currentUserId) {
-      const currentUserProfile = await prisma.profile.findUnique({
-        where: { userId: currentUserId },
-        select: { gender: true },
-      });
-
-      if (currentUserProfile?.gender === 'MALE') {
-        where.gender = 'FEMALE';
-      } else if (currentUserProfile?.gender === 'FEMALE') {
-        where.gender = 'MALE';
       }
     }
     if (maritalStatus) where.maritalStatus = maritalStatus;

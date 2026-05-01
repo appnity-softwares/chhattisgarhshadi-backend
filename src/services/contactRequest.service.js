@@ -7,7 +7,7 @@ import { blockService } from './block.service.js';
 // ADDED: Import notification service for push notifications
 import { notificationService } from './notification.service.js';
 import { hasPremiumAccess } from '../utils/premium.helper.js';
-import { logAdminAction } from './activityLog.service.js';
+import { createActivityLog } from './activityLog.service.js';
 import { isRateLimited } from './rateLimit.service.js';
 
 // Reusable select for public user data
@@ -18,6 +18,20 @@ const userPublicSelect = {
   preferredLanguage: true,
   profile: true,
 };
+
+const adminUserSelect = {
+  ...userPublicSelect,
+  email: true,
+  phone: true,
+};
+
+const mapAdminContactRequest = (request) => ({
+  ...request,
+  senderId: request.requesterId,
+  receiverId: request.profileId,
+  sender: request.requester,
+  receiver: request.profile,
+});
 
 /**
  * Create a new contact request
@@ -254,10 +268,14 @@ export const getAdminContactRequests = async (query) => {
   
   if (search) {
     where.OR = [
-      { sender: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
-      { sender: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
-      { receiver: { profile: { user: { profile: { firstName: { contains: search, mode: 'insensitive' } } } } } },
-      { receiver: { profile: { user: { profile: { lastName: { contains: search, mode: 'insensitive' } } } } } },
+      { requester: { email: { contains: search, mode: 'insensitive' } } },
+      { requester: { phone: { contains: search, mode: 'insensitive' } } },
+      { requester: { profile: { firstName: { contains: search, mode: 'insensitive' } } } },
+      { requester: { profile: { lastName: { contains: search, mode: 'insensitive' } } } },
+      { profile: { email: { contains: search, mode: 'insensitive' } } },
+      { profile: { phone: { contains: search, mode: 'insensitive' } } },
+      { profile: { profile: { firstName: { contains: search, mode: 'insensitive' } } } },
+      { profile: { profile: { lastName: { contains: search, mode: 'insensitive' } } } },
     ];
   }
 
@@ -265,28 +283,8 @@ export const getAdminContactRequests = async (query) => {
     prisma.contactRequest.findMany({
       where,
       include: {
-        sender: {
-          include: {
-            profile: {
-              include: {
-                user: {
-                  select: { id: true, email: true, role: true }
-                }
-              }
-            }
-          }
-        },
-        receiver: {
-          include: {
-            profile: {
-              include: {
-                user: {
-                  select: { id: true, email: true, role: true }
-                }
-              }
-            }
-          }
-        }
+        requester: { select: adminUserSelect },
+        profile: { select: adminUserSelect },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -296,7 +294,7 @@ export const getAdminContactRequests = async (query) => {
   ]);
 
   return {
-    requests,
+    requests: requests.map(mapAdminContactRequest),
     pagination: getPaginationMetadata(page, limit, total)
   };
 };
@@ -308,8 +306,8 @@ export const updateAdminContactRequest = async (requestId, status, reason, admin
   const request = await prisma.contactRequest.findUnique({
     where: { id: requestId },
     include: {
-      sender: { include: { user: true } },
-      receiver: { include: { user: true } }
+      requester: { select: adminUserSelect },
+      profile: { select: adminUserSelect },
     }
   });
 
@@ -321,34 +319,43 @@ export const updateAdminContactRequest = async (requestId, status, reason, admin
     where: { id: requestId },
     data: {
       status,
-      responseReason: reason,
-      respondedAt: new Date(),
-      respondedBy: adminId
-    }
+      ...(status === CONTACT_REQUEST_STATUS.APPROVED && { approvedAt: new Date() }),
+      ...(status === CONTACT_REQUEST_STATUS.REJECTED && { rejectedAt: new Date() }),
+    },
+    include: {
+      requester: { select: adminUserSelect },
+      profile: { select: adminUserSelect },
+    },
   });
 
   // Log admin action
-  await logAdminAction(adminId, 'CONTACT_REQUEST_UPDATED', 
-    `Updated contact request ${requestId} to ${status}`, 
-    { requestId, status, reason }
-  );
+  await createActivityLog({
+    userId: adminId,
+    action: 'CONTACT_REQUEST_UPDATED',
+    description: `Updated contact request ${requestId} to ${status}`,
+    metadata: { requestId, status, reason },
+  });
 
   // Send notification to users
   if (status === 'APPROVED') {
-    await notificationService.sendNotification(
-      request.receiverId,
-      'Your contact request has been approved',
-      NOTIFICATION_TYPES.CONTACT_REQUEST_APPROVED
-    );
+    await notificationService.createNotification({
+      userId: request.requesterId,
+      type: NOTIFICATION_TYPES.CONTACT_APPROVED || 'CONTACT_APPROVED',
+      title: 'Contact Request Approved',
+      message: 'Your contact request has been approved by admin.',
+      data: { requestId: String(requestId), reason: reason || '' },
+    });
   } else if (status === 'REJECTED') {
-    await notificationService.sendNotification(
-      request.senderId,
-      'Your contact request has been rejected',
-      NOTIFICATION_TYPES.CONTACT_REQUEST_REJECTED
-    );
+    await notificationService.createNotification({
+      userId: request.requesterId,
+      type: NOTIFICATION_TYPES.CONTACT_REJECTED || 'CONTACT_REJECTED',
+      title: 'Contact Request Rejected',
+      message: 'Your contact request has been rejected by admin.',
+      data: { requestId: String(requestId), reason: reason || '' },
+    });
   }
 
-  return updatedRequest;
+  return mapAdminContactRequest(updatedRequest);
 };
 
 export const respondToRequest = async (userId, requestId, status) => {

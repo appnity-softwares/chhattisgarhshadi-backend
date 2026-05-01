@@ -141,7 +141,7 @@ export const searchProfilesSchema = z.object({
     cursor: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).optional(),
-    gender: z.nativeEnum(GENDER).optional(),
+    gender: z.union([z.nativeEnum(GENDER), z.enum(['BOTH', 'ALL', 'MIX'])]).optional(),
     minAge: z.coerce.number().int().optional(),
     maxAge: z.coerce.number().int().max(100).optional(),
     religions: stringToArray.optional(),

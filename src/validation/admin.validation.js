@@ -28,6 +28,16 @@ export const userIdParamSchema = z.object({
   }),
 });
 
+// Schema for generic routes with an :id param
+export const idParamSchema = z.object({
+  params: z.object({
+    id: z.coerce
+      .number({ invalid_type_error: 'ID must be a number' })
+      .int()
+      .positive('ID must be a positive integer'),
+  }),
+});
+
 // Schema for updating a user's role
 export const updateUserRoleSchema = z.object({
   params: z.object({
@@ -66,12 +76,7 @@ export const getPaymentsSchema = z.object({
 
 // Schema for report ID param
 export const reportIdParamSchema = z.object({
-  params: z.object({
-    id: z.coerce
-      .number({ invalid_type_error: 'Report ID must be a number' })
-      .int()
-      .positive('Report ID must be a positive integer'),
-  }),
+  params: idParamSchema.shape.params,
 });
 
 // Schema for updating a report

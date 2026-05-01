@@ -43,10 +43,10 @@ const verifyClientSignature = async ({
   }
 };
 
-const verifyWebhookSignature = (event, signature) => {
+const verifyWebhookSignature = (event, signature, rawBody) => {
   const expectedSignature = crypto
     .createHmac('sha256', getWebhookSecret())
-    .update(JSON.stringify(event))
+    .update(rawBody || JSON.stringify(event))
     .digest('hex');
 
   if (expectedSignature !== signature) {
@@ -509,9 +509,9 @@ const handlePaymentFailed = async (paymentEntity) => {
   logger.info(`Payment marked failed for order ${paymentEntity.order_id}`);
 };
 
-export const handleWebhook = async (event, signature) => {
+export const handleWebhook = async (event, signature, rawBody = null) => {
   try {
-    verifyWebhookSignature(event, signature);
+    verifyWebhookSignature(event, signature, rawBody);
 
     switch (event.event) {
       case 'payment.captured':
@@ -617,4 +617,3 @@ export const paymentService = {
     return { status };
   },
 };
-

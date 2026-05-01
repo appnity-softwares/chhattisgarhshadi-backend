@@ -12,6 +12,7 @@ import {
 import {
   paginationQuerySchema,
   recentQuerySchema,
+  idParamSchema,
   userIdParamSchema,
   updateUserRoleSchema,
   getPaymentsSchema,
@@ -197,7 +198,7 @@ router.get(
 );
 router.put(
   '/contact-requests/:id',
-  validate(userIdParamSchema),
+  validate(idParamSchema),
   adminController.updateAdminContactRequest
 );
 
@@ -209,7 +210,7 @@ router.get(
 );
 router.put(
   '/photo-requests/:id',
-  validate(userIdParamSchema),
+  validate(idParamSchema),
   adminController.updateAdminPhotoRequest
 );
 
@@ -221,12 +222,12 @@ router.get(
 );
 router.get(
   '/chats/:id',
-  validate(userIdParamSchema),
+  validate(idParamSchema),
   adminController.getConversationById
 );
 router.delete(
   '/chats/:id',
-  validate(userIdParamSchema),
+  validate(idParamSchema),
   adminController.deleteConversation
 );
 

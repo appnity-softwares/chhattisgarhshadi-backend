@@ -73,7 +73,9 @@ export const uploadToR2 = async (
     logger.error('Error in uploadToR2:', error);
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      `Failed to upload file: ${error.message}` // Expose error for debugging
+      process.env.NODE_ENV === 'production'
+        ? 'Failed to upload file'
+        : `Failed to upload file: ${error.message}`
     );
   }
 };

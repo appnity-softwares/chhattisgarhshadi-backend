@@ -43,7 +43,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
 export const handleWebhook = asyncHandler(async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
 
-  await paymentService.handleWebhook(req.body, signature);
+  await paymentService.handleWebhook(req.body, signature, req.rawBody);
 
   // Respond to Razorpay immediately
   res.status(HTTP_STATUS.OK).json({ status: 'ok' });
