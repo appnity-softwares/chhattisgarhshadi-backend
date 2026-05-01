@@ -158,6 +158,8 @@ export const searchProfilesSchema = z.object({
     income: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
+    manglik: z.coerce.boolean().optional(),
+    diet: z.string().optional(),
     isVerified: z.coerce.boolean().optional(),
     withPhoto: z.coerce.boolean().optional(),
     minCompletion: z.coerce.number().min(0).max(100).optional(),
