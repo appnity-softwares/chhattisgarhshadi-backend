@@ -11,6 +11,26 @@ import { generateUniqueFilename, generateStorageKey } from '../utils/helpers.js'
 import { logger } from '../config/logger.js';
 import sharp from 'sharp';
 
+const UPLOAD_TIMEOUT_MS = Number(process.env.UPLOAD_TIMEOUT_MS || 45000);
+
+const withTimeout = async (promise, ms, label) => {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new ApiError(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        `${label} timed out. Please try again.`
+      ));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 /**
  * Upload file to Cloudflare R2
  * @param {Object} file - File object from multer
@@ -25,10 +45,10 @@ export const uploadToR2 = async (
 ) => {
   try {
     // Check if R2 is configured
-    if (!isR2Configured()) {
+    if (!isR2Configured() || !r2Client) {
       throw new ApiError(
         HTTP_STATUS.SERVICE_UNAVAILABLE,
-        'Cloudflare R2 storage is not configured. Please contact administrator.'
+        'Photo storage is not configured. Please contact support.'
       );
     }
     const filename = generateUniqueFilename(file.originalname);
@@ -43,7 +63,7 @@ export const uploadToR2 = async (
       // Make sure bucket policy allows public read access for profile photos
     });
 
-    await r2Client.send(command);
+    await withTimeout(r2Client.send(command), UPLOAD_TIMEOUT_MS, 'Photo upload');
 
     const region = getRegion();
 
@@ -70,12 +90,22 @@ export const uploadToR2 = async (
       mimetype: file.mimetype,
     };
   } catch (error) {
-    logger.error('Error in uploadToR2:', error);
+    logger.error('Error in uploadToR2:', {
+      message: error.message,
+      statusCode: error.statusCode,
+      code: error.code,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
       process.env.NODE_ENV === 'production'
-        ? 'Failed to upload file'
-        : `Failed to upload file: ${error.message}`
+        ? 'Failed to upload photo to storage. Please try again.'
+        : `Failed to upload photo to storage: ${error.message}`
     );
   }
 };
@@ -88,6 +118,14 @@ export const uploadToR2 = async (
  */
 export const processAndUploadImage = async (file, folder = 'photos') => {
   try {
+    logger.info('Processing profile image upload', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      folder,
+    });
+
     // Process main image
     const processedImage = await sharp(file.buffer)
       .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
@@ -132,10 +170,32 @@ export const processAndUploadImage = async (file, folder = 'photos') => {
       thumbnail: thumbnailImage,
     };
   } catch (error) {
-    logger.error('Error in processAndUploadImage:', error);
+    logger.error('Error in processAndUploadImage:', {
+      message: error.message,
+      statusCode: error.statusCode,
+      code: error.code,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    });
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    const message = error.message || '';
+    if (
+      message.includes('Input buffer contains unsupported image format') ||
+      message.includes('unsupported image format') ||
+      message.includes('corrupt')
+    ) {
+      throw new ApiError(
+        HTTP_STATUS.BAD_REQUEST,
+        'Invalid image file. Please upload a valid JPG or PNG photo.'
+      );
+    }
+
     throw new ApiError(
       HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      'Failed to process and upload image'
+      'Failed to process and upload photo. Please try again.'
     );
   }
 };
@@ -152,7 +212,7 @@ export const deleteFile = async (key) => {
       Key: key,
     });
 
-    await r2Client.send(command);
+    await withTimeout(r2Client.send(command), UPLOAD_TIMEOUT_MS, 'Photo delete');
 
     logger.info(`File deleted from R2: ${key}`);
   } catch (error) {

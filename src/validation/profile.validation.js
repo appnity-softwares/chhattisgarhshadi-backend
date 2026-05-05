@@ -86,12 +86,12 @@ const profileBodyBase = {
   nakshatra: z.string().optional(), // ADDED
 
   // Education (summary)
-  highestEducation: z.nativeEnum(EDUCATION_LEVEL).optional(), // FIX: Use enum
+  highestEducation: z.union([z.nativeEnum(EDUCATION_LEVEL), z.null()]).optional(), // Allow clearing optional field
   educationDetails: z.string().max(1000).optional(), // ADDED
   collegeName: z.string().optional(), // ADDED
 
   // Occupation (summary)
-  occupationType: z.nativeEnum(OCCUPATION_TYPE).optional(), // FIX: Use enum
+  occupationType: z.union([z.nativeEnum(OCCUPATION_TYPE), z.null()]).optional(), // Allow clearing optional field
   occupation: z.string().optional(),
   designation: z.string().optional(), // ADDED
   companyName: z.string().optional(), // ADDED

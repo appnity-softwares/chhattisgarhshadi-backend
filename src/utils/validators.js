@@ -10,7 +10,6 @@ export const isValidFileType = (
     'image/jpeg',
     'image/png',
     'image/jpg',
-    'image/webp',
     'application/pdf',
   ]
 ) => {
