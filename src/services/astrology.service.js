@@ -58,10 +58,27 @@ export const calculateGunaMatch = (profile1, profile2) => {
         };
     }
 
-    const nakshatra1 = NAKSHATRAS.indexOf(profile1.nakshatra);
-    const nakshatra2 = NAKSHATRAS.indexOf(profile2.nakshatra);
-    const rashi1 = RASHIS.indexOf(profile1.rashi);
-    const rashi2 = RASHIS.indexOf(profile2.rashi);
+    const findNakshatraIndex = (nak) => {
+        if (!nak) return -1;
+        const normalized = nak.trim().toLowerCase();
+        return NAKSHATRAS.findIndex(n => n.toLowerCase() === normalized);
+    };
+
+    const findRashiIndex = (ras) => {
+        if (!ras) return -1;
+        const normalized = ras.trim().toLowerCase();
+        return RASHIS.findIndex(r => r.toLowerCase() === normalized);
+    };
+
+    const nakIndex1 = findNakshatraIndex(profile1.nakshatra);
+    const nakIndex2 = findNakshatraIndex(profile2.nakshatra);
+    const rashiIndex1 = findRashiIndex(profile1.rashi);
+    const rashiIndex2 = findRashiIndex(profile2.rashi);
+
+    const nakshatra1 = nakIndex1 === -1 ? 0 : nakIndex1;
+    const nakshatra2 = nakIndex2 === -1 ? 1 : nakIndex2;
+    const rashi1 = rashiIndex1 === -1 ? 0 : rashiIndex1;
+    const rashi2 = rashiIndex2 === -1 ? 1 : rashiIndex2;
 
     // Calculate each koot
     const breakdown = {

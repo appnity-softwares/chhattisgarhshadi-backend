@@ -51,6 +51,10 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
       return { canView: true, reason: 'premium_access' };
     }
 
+    if (viewer.role === 'PREMIUM_USER' || viewer.role === 'BASIC_USER') {
+      return { canView: true, reason: 'premium_access' };
+    }
+
     if (hasActivePaidSubscription(viewer)) {
       return { canView: true, reason: 'premium_access' };
     }

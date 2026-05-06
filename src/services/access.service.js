@@ -75,12 +75,12 @@ export const getUserAccess = async (userId) => {
         // Rules based on Role Tier
         requiresMatchToChat: !isPremiumTier, // Only Premium tier can chat with anyone
         canInitiateChat: isPremiumTier,      // Only Premium tier can initiate chat
-        canViewContacts: isPremiumTier,      // Premium has unrestricted contact viewing
+        canViewContacts: isPremiumTier || isBasicTier,      // Premium has unrestricted contact viewing, Basic has limit
         photoLimit: isPremiumTier ? -1 : 5,  // Basic users see 5, Premium unlimited
         
         // Limits & Features read directly from DB Plan object
         messageLimitPerDay: isPremiumTier ? -1 : (isBasicTier ? 10 : 1),
-        canSeeProfileVisitors: plan.canSeeProfileVisitors || false,
+        canSeeProfileVisitors: plan.canSeeProfileVisitors || isPremiumTier || isBasicTier || false,
         priorityListing: plan.priorityListing || false,
         verifiedBadge: plan.verifiedBadge || false,
         
