@@ -428,13 +428,23 @@ export const verifyPayment = async (data) => {
     }
 
     if (payment.status !== PAYMENT_STATUS.COMPLETED) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          razorpayPaymentId: data.razorpay_payment_id,
-          razorpaySignature: data.razorpay_signature,
-        },
+      const result = await finalizeCapturedPayment({
+        razorpayOrderId: data.razorpay_order_id,
+        razorpayPaymentId: data.razorpay_payment_id,
+        razorpaySignature: data.razorpay_signature,
+        paymentMethod: 'RAZORPAY',
+        paidAt: new Date(),
       });
+
+      if (!result.alreadyProcessed) {
+        await notifySubscriptionOutcome({
+          userId: result.payment.userId,
+          subscription: result.subscription,
+          status: result.status,
+        });
+      }
+      
+      payment.status = PAYMENT_STATUS.COMPLETED;
     }
 
     return {

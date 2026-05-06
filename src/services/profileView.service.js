@@ -46,6 +46,7 @@ export const logProfileView = async (viewerId, profileId, isAnonymous = false) =
       include: {
         subscriptions: {
           where: { status: 'ACTIVE', endDate: { gt: new Date() } },
+          orderBy: { endDate: 'desc' },
           take: 1,
         },
         profile: { select: { firstName: true, lastName: true } },

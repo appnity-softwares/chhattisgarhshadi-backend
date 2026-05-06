@@ -86,7 +86,7 @@ export const createPhotoRequest = async (requesterId, data) => {
     // Note: This check is often best handled by the `requireSubscription` middleware on the route
     const requester = await prisma.user.findUnique({ 
       where: { id: requesterId },
-      include: { subscriptions: { where: { status: 'ACTIVE', endDate: { gt: new Date() } } } }
+      include: { subscriptions: { where: { status: 'ACTIVE', endDate: { gt: new Date() } }, orderBy: { endDate: 'desc' }, take: 1 } }
     });
     if (!hasPremiumAccess(requester)) {
       throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You must be a premium member to request photo access');

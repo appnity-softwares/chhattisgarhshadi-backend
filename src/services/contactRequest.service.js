@@ -80,6 +80,7 @@ export const createContactRequest = async (requesterId, data) => {
         include: {
           subscriptions: {
             where: { status: 'ACTIVE', endDate: { gt: new Date() } },
+            orderBy: { endDate: 'desc' },
             take: 1,
           },
         },

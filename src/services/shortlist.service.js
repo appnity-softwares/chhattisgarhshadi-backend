@@ -50,6 +50,7 @@ export const addToShortlist = async (userId, shortlistedUserId, note) => {
       include: {
         subscriptions: {
           where: { status: 'ACTIVE', endDate: { gt: new Date() } },
+          orderBy: { endDate: 'desc' },
           take: 1,
         },
         profile: { select: { firstName: true } },

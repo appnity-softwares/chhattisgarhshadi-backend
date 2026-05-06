@@ -57,6 +57,7 @@ export const sendMatchRequest = async (fromUserId, receiverId, message) => {
       include: {
         subscriptions: {
           where: { status: 'ACTIVE', endDate: { gt: new Date() } },
+          orderBy: { endDate: 'desc' },
           include: { plan: true },
           take: 1,
         },

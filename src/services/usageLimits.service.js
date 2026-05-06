@@ -87,8 +87,8 @@ export const getUserPlanAndLimits = async (userId) => {
                     status: 'ACTIVE',
                     endDate: { gt: new Date() },
                 },
-                include: { plan: true },
                 orderBy: { endDate: 'desc' },
+                include: { plan: true },
                 take: 1
             }
         }
