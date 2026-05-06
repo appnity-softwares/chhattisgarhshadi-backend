@@ -8,6 +8,7 @@ export const createOrderSchema = z.object({
       .number({ invalid_type_error: 'planId must be a number' })
       .int()
       .positive('planId must be a positive integer'),
+    promoCode: z.string().trim().min(1).max(50).optional(),
   }),
 });
 
