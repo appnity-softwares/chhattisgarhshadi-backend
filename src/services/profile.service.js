@@ -7,6 +7,7 @@ import { logger } from '../config/logger.js';
 import { uploadService } from './upload.service.js';
 import { blockService } from './block.service.js';
 import contactVisibilityService from './contactVisibility.service.js';
+import { cacheHelper } from '../utils/cache.helper.js';
 
 const profileUserSelect = {
   id: true,
@@ -50,7 +51,7 @@ const sanitizeProfileInput = (data) => {
 
   // Fields that should be numbers
   const intFields = ['height', 'weight'];
-  const intFieldsWithDefaultZero = ['numberOfBrothers', 'numberOfSisters', 'brothersMarried', 'sistersMarried', 'profileCompleteness', 'profileScore', 'viewCount'];
+  const intFieldsWithDefaultZero = ['numberOfBrothers', 'numberOfSisters', 'brothersMarried', 'sistersMarried'];
 
   intFields.forEach(field => {
     if (Object.prototype.hasOwnProperty.call(profileData, field)) {
@@ -83,21 +84,44 @@ const sanitizeProfileInput = (data) => {
   }
 
   delete profileData.intercasteAllowed;
+  delete profileData.profileStatus;
+  delete profileData.profileCompleteness;
+  delete profileData.profileCompletionPercentage;
+  delete profileData.profileScore;
+  delete profileData.viewCount;
+  delete profileData.contactViewCount;
+  delete profileData.shortlistCount;
+  delete profileData.matchRequestCount;
   return profileData;
 };
 
+const applyOnboardingDefaults = (data) => ({
+  maritalStatus: 'NEVER_MARRIED',
+  motherTongue: 'HINDI',
+  country: 'India',
+  state: 'Chhattisgarh',
+  speaksChhattisgarhi: false,
+  ...data,
+});
+
 const transformMedia = (media = []) =>
-  media.map((item) => ({
-    id: item.id,
-    url: item.url,
-    thumbnailUrl: item.thumbnailUrl,
-    type: item.type,
-    isProfilePicture: item.isDefault,
-    isPrivate: item.isPrivate,
-    isVisible: item.isVisible,
-    privacySettings: item.privacySettings,
-    createdAt: item.createdAt,
-  }));
+  [...media]
+    .sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'PROFILE_PHOTO' ? -1 : 1;
+      return (a.displayOrder || 0) - (b.displayOrder || 0) || a.id - b.id;
+    })
+    .map((item) => ({
+      id: item.id,
+      url: item.url,
+      thumbnailUrl: item.thumbnailUrl,
+      type: item.type,
+      isProfilePicture: item.isDefault,
+      isPrivate: item.isPrivate,
+      isVisible: item.isVisible,
+      privacySettings: item.privacySettings,
+      createdAt: item.createdAt,
+    }));
 
 const appendAnd = (where, condition) => {
   where.AND = [...(where.AND || []), condition];
@@ -170,6 +194,8 @@ const serializeProfile = (profile, isShortlisted = false) => {
     media: transformMedia(profile.media),
     age: calculateAge(profile.dateOfBirth),
     profileCompleteness: profile.profileCompleteness || 0,
+    profileCompletionPercentage: profile.profileCompletionPercentage ?? profile.profileCompleteness ?? 0,
+    profileStatus: profile.profileStatus || (profile.isPublished ? 'ACTIVE' : 'INCOMPLETE'),
     isShortlisted,
     relationship,
   };
@@ -181,6 +207,7 @@ const wrapProfileResponse = (profile, isShortlisted = false) => {
   return {
     profile: serializedProfile,
     profileCompleteness: serializedProfile?.profileCompleteness || 0,
+    profileCompletionPercentage: serializedProfile?.profileCompletionPercentage ?? serializedProfile?.profileCompleteness ?? 0,
   };
 };
 
@@ -243,15 +270,16 @@ export const createProfile = async (userId, data) => {
       throw new ApiError(HTTP_STATUS.CONFLICT, 'Profile already exists');
     }
 
-    const profileData = sanitizeProfileInput(data);
+    const profileData = applyOnboardingDefaults(sanitizeProfileInput(data));
 
     await prisma.profile.create({
       data: {
         userId,
         ...profileData,
-        isDraft: false,
-        isPublished: true,
-        publishedAt: new Date(),
+        profileStatus: 'INCOMPLETE',
+        isDraft: true,
+        isPublished: false,
+        publishedAt: null,
       },
     });
 
@@ -687,17 +715,113 @@ export const deletePhoto = async (userId, mediaId) => {
       }
     }
 
-    await prisma.media.delete({
-      where: { id: mediaId },
+    await prisma.$transaction(async (tx) => {
+      await tx.media.delete({
+        where: { id: mediaId },
+      });
+
+      if (media.isDefault || media.type === 'PROFILE_PHOTO') {
+        const replacement = await tx.media.findFirst({
+          where: {
+            userId,
+            type: 'GALLERY_PHOTO',
+            isVisible: true,
+          },
+          orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        });
+
+        if (replacement) {
+          await tx.media.updateMany({
+            where: { userId },
+            data: { isDefault: false },
+          });
+          await tx.media.update({
+            where: { id: replacement.id },
+            data: { type: 'PROFILE_PHOTO', isDefault: true },
+          });
+          await tx.user.update({
+            where: { id: userId },
+            data: { profilePicture: replacement.url },
+          });
+        } else {
+          await tx.user.update({
+            where: { id: userId },
+            data: { profilePicture: null },
+          });
+        }
+      }
     });
 
     await updateProfileCompleteness(prisma, userId);
+    await cacheHelper.del(`profile:userId:${userId}`);
 
     logger.info(`Photo deleted: ${mediaId} by user: ${userId}`);
   } catch (error) {
     logger.error('Error in deletePhoto:', error);
     if (error instanceof ApiError) throw error;
     throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error deleting photo');
+  }
+};
+
+export const setProfilePhoto = async (userId, mediaId) => {
+  try {
+    const media = await prisma.media.findUnique({
+      where: { id: mediaId },
+    });
+
+    if (!media) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Photo not found');
+    }
+
+    if (media.userId !== userId) {
+      throw new ApiError(HTTP_STATUS.FORBIDDEN, 'You are not authorized to update this photo');
+    }
+
+    if (!['PROFILE_PHOTO', 'GALLERY_PHOTO'].includes(media.type)) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Only profile and gallery photos can be set as profile photo');
+    }
+
+    const updatedMedia = await prisma.$transaction(async (tx) => {
+      await tx.media.updateMany({
+        where: { userId },
+        data: { isDefault: false },
+      });
+
+      await tx.media.updateMany({
+        where: {
+          userId,
+          type: 'PROFILE_PHOTO',
+          id: { not: mediaId },
+        },
+        data: { type: 'GALLERY_PHOTO' },
+      });
+
+      const nextMedia = await tx.media.update({
+        where: { id: mediaId },
+        data: {
+          type: 'PROFILE_PHOTO',
+          isDefault: true,
+          isVisible: true,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { profilePicture: nextMedia.url },
+      });
+
+      return nextMedia;
+    });
+
+    await cacheHelper.del(`profile:userId:${userId}`);
+    await updateProfileCompleteness(prisma, userId);
+
+    logger.info(`Profile photo changed: ${mediaId} by user: ${userId}`);
+    return updatedMedia;
+  } catch (error) {
+    logger.error('Error in setProfilePhoto:', error);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error updating profile photo');
   }
 };
 
@@ -710,4 +834,5 @@ export const profileService = {
   searchProfiles,
   addPhoto,
   deletePhoto,
+  setProfilePhoto,
 };

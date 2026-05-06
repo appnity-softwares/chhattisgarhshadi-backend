@@ -201,6 +201,11 @@ enum VerificationStatus {
   RESUBMIT_REQUIRED
 }
 
+enum ProfileStatus {
+  INCOMPLETE
+  ACTIVE
+}
+
 enum AdminRole {
   SUPER_ADMIN
   ADMIN
@@ -625,7 +630,8 @@ model Profile {
   showHoroscope     Boolean @default(false)
 
   // Metrics
-  profileCompleteness Int @default(0)
+  profileCompleteness           Int @default(0)
+  profileCompletionPercentage   Int @default(0)
   profileScore        Int @default(0) // Quality score
   viewCount           Int @default(0)
   contactViewCount    Int @default(0)
@@ -638,6 +644,7 @@ model Profile {
   verificationNote String?   @db.Text
 
   // Profile Status
+  profileStatus ProfileStatus @default(INCOMPLETE)
   isDraft     Boolean   @default(true)
   isPublished Boolean   @default(false)
   publishedAt DateTime?

@@ -542,7 +542,8 @@ const updateProfileStatus = async (profileId, isPublished, _statusReason) => {
       where: { id: profileId },
       data: { 
         isPublished,
-        // Using a metadata field if available or just update status
+        profileStatus: isPublished ? 'ACTIVE' : 'INCOMPLETE',
+        publishedAt: isPublished ? new Date() : null,
       },
     });
     return updatedProfile;

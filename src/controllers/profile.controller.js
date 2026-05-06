@@ -117,6 +117,17 @@ export const deletePhoto = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Set an existing photo as the profile photo
+ */
+export const setProfilePhoto = asyncHandler(async (req, res) => {
+  const mediaId = parseInt(req.params.mediaId, 10);
+  const media = await profileService.setProfilePhoto(req.user.id, mediaId);
+  res
+    .status(HTTP_STATUS.OK)
+    .json(new ApiResponse(HTTP_STATUS.OK, media, 'Profile photo updated successfully'));
+});
+
+/**
  * Get Recommendations (Algorithm)
  */
 export const getRecommendations = asyncHandler(async (req, res) => {
@@ -158,5 +169,6 @@ export const profileController = {
   deleteMyProfile,
   searchProfiles,
   deletePhoto,
+  setProfilePhoto,
   getRecommendations,
 };

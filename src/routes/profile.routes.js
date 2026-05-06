@@ -38,6 +38,12 @@ router.delete(
   profileController.deletePhoto
 );
 
+router.patch(
+  '/photos/:mediaId/profile-photo',
+  validate(mediaIdSchema),
+  profileController.setProfilePhoto
+);
+
 // Get Recommendations (Smart Algorithm)
 router.get(
   '/recommendations',

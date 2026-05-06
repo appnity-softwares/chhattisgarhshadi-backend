@@ -101,23 +101,18 @@ const profileBodyBase = {
 
 export const createProfileSchema = z.object({
   body: z.object({
-    // Required fields
+    // Required for fast onboarding activation
     firstName: profileBodyBase.firstName,
     lastName: profileBodyBase.lastName,
     dateOfBirth: profileBodyBase.dateOfBirth,
     gender: profileBodyBase.gender,
-    maritalStatus: profileBodyBase.maritalStatus,
     religion: profileBodyBase.religion,
-    motherTongue: profileBodyBase.motherTongue,
-    country: profileBodyBase.country,
-    state: profileBodyBase.state,
     city: profileBodyBase.city,
 
     // All other fields are optional on creation
     ...Object.keys(profileBodyBase)
       .filter(key => ![
-        'firstName', 'lastName', 'dateOfBirth', 'gender', 'maritalStatus',
-        'religion', 'motherTongue', 'country', 'state', 'city'
+        'firstName', 'lastName', 'dateOfBirth', 'gender', 'religion', 'city'
       ].includes(key))
       .reduce((obj, key) => {
         obj[key] = profileBodyBase[key].optional();

@@ -9,6 +9,10 @@ router.use('/auth', authRoutes);
 import themeRoutes from './theme.routes.js';
 router.use('/theme', themeRoutes);
 
+// App metadata routes (Public)
+import appVersionRoutes from './appVersion.routes.js';
+router.use('/app', appVersionRoutes);
+
 // User routes
 import userRoutes from './user.routes.js';
 router.use('/users', userRoutes);

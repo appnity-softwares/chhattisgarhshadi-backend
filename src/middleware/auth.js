@@ -149,15 +149,14 @@ export const requireCompleteProfile = async (req, res, next) => {
       return next(new ApiError(HTTP_STATUS.FORBIDDEN, 'Profile not found. Please create your profile first.'));
     }
 
-    // Production eligibility gate for sensitive interaction surfaces.
-    const profileCompleteness = req.user.profile.profileCompleteness || 0;
-    const requiredCompleteness = 50;
+    // Activation gate: optional profile fields must not block core app usage.
+    const isActiveProfile = req.user.profile.profileStatus === 'ACTIVE' || req.user.profile.isPublished;
 
-    if (profileCompleteness < requiredCompleteness) {
-      const error = new ApiError(HTTP_STATUS.FORBIDDEN, 'Please complete your profile to access this feature');
+    if (!isActiveProfile) {
+      const error = new ApiError(HTTP_STATUS.FORBIDDEN, 'Please add a profile photo to activate your profile');
       error.data = {
-        profileCompleteness,
-        requiredCompleteness,
+        profileStatus: req.user.profile.profileStatus || 'INCOMPLETE',
+        profileCompletionPercentage: req.user.profile.profileCompletionPercentage ?? req.user.profile.profileCompleteness ?? 0,
       };
       return next(error);
     }

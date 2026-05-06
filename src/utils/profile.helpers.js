@@ -118,8 +118,9 @@ export const updateProfileCompleteness = async (prisma, userId) => {
   // Add bonus for profile photo (e.g., 10 points)
   // We'll cap the total score at 100, but this helps users
   // reach 100 if they missed a few minor fields.
+  const hasProfilePhoto = profile.media && profile.media.length > 0;
   const photoBonus = 10;
-  if (profile.media && profile.media.length > 0) {
+  if (hasProfilePhoto) {
     score += photoBonus;
   }
 
@@ -128,7 +129,14 @@ export const updateProfileCompleteness = async (prisma, userId) => {
 
   await prisma.profile.update({
     where: { userId },
-    data: { profileCompleteness: finalScore },
+    data: {
+      profileCompleteness: finalScore,
+      profileCompletionPercentage: finalScore,
+      profileStatus: hasProfilePhoto ? 'ACTIVE' : 'INCOMPLETE',
+      isDraft: !hasProfilePhoto,
+      isPublished: hasProfilePhoto,
+      publishedAt: hasProfilePhoto ? (profile.publishedAt || new Date()) : null,
+    },
   });
 
   return finalScore;
