@@ -208,6 +208,65 @@ export const handleExpiredInterests = async () => {
 };
 
 /**
+ * Send random engagement notifications to active users
+ * Run daily at 6:00 PM
+ */
+export const sendRandomEngagementNotifications = async () => {
+    logger.info('Running engagement notification job...');
+    try {
+        const usersWithTokens = await prisma.user.findMany({
+            where: {
+                fcmTokens: {
+                    some: { isActive: true }
+                }
+            },
+            select: {
+                id: true,
+                profile: { select: { firstName: true } }
+            }
+        });
+
+        logger.info(`Found ${usersWithTokens.length} users with active FCM tokens for engagement`);
+
+        const engagementMessages = [
+            { title: "नया मैच इंतज़ार कर रहा है! 💖", message: "आपके प्रोफ़ाइल के लिए कुछ नए रिश्ते आए हैं। अभी चेक करें!" },
+            { title: "रिश्ता तय करने का सही समय! 💍", message: "आज ही नए लोगों से बातचीत शुरू करें और अपना जीवनसाथी चुनें।" },
+            { title: "छत्तीसगढ़ के सबसे भरोसेमंद ऐप पर! 🌟", message: "सैकड़ों परिवार हमसे जुड़े हैं। अपना सही जीवनसाथी ढूंढने के लिए प्रोफ़ाइल अपडेट करें।" },
+            { title: "क्या आपने आज के मैच देखे? 👀", message: "आपकी पसंद के अनुसार आज कुछ नए प्रोफाइल जोड़े गए हैं। तुरंत देखें!" },
+            { title: "शुभ विवाह की ओर बढ़ाएं कदम! 🕊️", message: "अपना संपूर्ण प्रोफ़ाइल विवरण पूरा करें ताकि लोग आपसे संपर्क कर सकें।" },
+            { title: "अनलॉक करें प्रीमियम फीचर्स! ✨", message: "सीधे चैट और फोन कॉल करने के लिए प्रीमियम प्लान पर अपग्रेड करें।" }
+        ];
+
+        let sentCount = 0;
+        for (const user of usersWithTokens) {
+            // Select random message
+            const randomIndex = Math.floor(Math.random() * engagementMessages.length);
+            const msgTemplate = engagementMessages[randomIndex];
+            
+            const namePrefix = user.profile?.firstName ? `${user.profile.firstName}, ` : '';
+            const personalizedMessage = `${namePrefix}${msgTemplate.message}`;
+
+            await notificationService.createNotification({
+                userId: user.id,
+                type: NOTIFICATION_TYPES.SYSTEM_BROADCAST || 'SYSTEM_BROADCAST',
+                title: msgTemplate.title,
+                message: personalizedMessage,
+                data: {
+                    type: 'SYSTEM_BROADCAST',
+                }
+            });
+            sentCount++;
+        }
+
+        logger.info(`Engagement notification job completed. Dispatched to ${sentCount} users.`);
+        return { success: true, sentCount };
+    } catch (error) {
+        logger.error('Error in sendRandomEngagementNotifications:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * Initialize cron jobs
  * Call this on server startup
  */
@@ -215,6 +274,11 @@ export const initSubscriptionCronJobs = () => {
     // Run expiry reminders daily at 9:00 AM
     cron.schedule('0 9 * * *', () => {
         sendExpiryReminders();
+    });
+
+    // Run engagement notifications daily at 6:00 PM
+    cron.schedule('0 18 * * *', () => {
+        sendRandomEngagementNotifications();
     });
 
     // Run expired subscriptions & interests handler every hour at minute 0
@@ -236,5 +300,6 @@ export default {
     sendExpiryReminders,
     handleExpiredSubscriptions,
     handleExpiredInterests,
+    sendRandomEngagementNotifications,
     initSubscriptionCronJobs,
 };
