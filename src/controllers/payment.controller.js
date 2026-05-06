@@ -78,9 +78,9 @@ export const getMyPayments = asyncHandler(async (req, res) => {
  * Credits remaining days from current subscription + adds new plan duration
  */
 export const createUpgradeOrder = asyncHandler(async (req, res) => {
-  const { planId } = req.body;
+  const { planId, promoCode } = req.body;
 
-  const order = await paymentService.createUpgradeOrder(req.user.id, planId);
+  const order = await paymentService.createUpgradeOrder(req.user.id, planId, promoCode);
 
   res
     .status(HTTP_STATUS.CREATED)

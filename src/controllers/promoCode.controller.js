@@ -70,6 +70,21 @@ export const promoCodeController = {
             throw new ApiError(400, 'Promo code usage limit reached');
         }
 
+        // Check if current user has already used this promo code
+        const alreadyUsed = await prisma.userSubscription.findFirst({
+            where: {
+                userId: req.user.id,
+                status: { not: 'CANCELLED' },
+                metadata: {
+                    contains: `"promoCode":"${promo.code}"`
+                }
+            }
+        });
+
+        if (alreadyUsed) {
+            throw new ApiError(400, 'You have already used this coupon code');
+        }
+
         return res.json(new ApiResponse(200, {
             id: promo.id,
             code: promo.code,

@@ -72,7 +72,7 @@ const getPlanOrThrow = async (planId) => {
   return plan;
 };
 
-const getPromoOrNull = async (promoCode) => {
+const getPromoOrNull = async (promoCode, userId = null) => {
   if (!promoCode) return null;
 
   const promo = await prisma.promoCode.findFirst({
@@ -82,9 +82,30 @@ const getPromoOrNull = async (promoCode) => {
     },
   });
 
-  if (!promo) return null;
-  if (promo.expiresAt && new Date(promo.expiresAt) <= new Date()) return null;
-  if (promo.maxUsage && promo.usageCount >= promo.maxUsage) return null;
+  if (!promo) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Invalid promo code');
+  }
+  if (promo.expiresAt && new Date(promo.expiresAt) <= new Date()) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Promo code has expired');
+  }
+  if (promo.maxUsage && promo.usageCount >= promo.maxUsage) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Promo code usage limit reached');
+  }
+
+  if (userId) {
+    const alreadyUsed = await prisma.userSubscription.findFirst({
+      where: {
+        userId,
+        status: { not: SUBSCRIPTION_STATUS.CANCELLED },
+        metadata: {
+          contains: `"promoCode":"${promo.code}"`
+        }
+      }
+    });
+    if (alreadyUsed) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'You have already used this coupon code');
+    }
+  }
 
   return promo;
 };
@@ -217,7 +238,7 @@ export const createOrder = async (userId, planId, promoCode = null) => {
   }
 
   const plan = await getPlanOrThrow(planId);
-  const promo = await getPromoOrNull(promoCode);
+  const promo = await getPromoOrNull(promoCode, userId);
   const { baseAmount, finalAmount, discountApplied } = getDiscountedAmount(plan, promo);
 
   let createdRecords = null;
@@ -312,7 +333,7 @@ export const createOrder = async (userId, planId, promoCode = null) => {
   }
 };
 
-export const createUpgradeOrder = async (userId, newPlanId) => {
+export const createUpgradeOrder = async (userId, newPlanId, promoCode = null) => {
   if (!(await isRazorpayConfigured())) {
     throw new ApiError(
       HTTP_STATUS.SERVICE_UNAVAILABLE,
@@ -338,6 +359,9 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
   }
 
   const newPlan = await getPlanOrThrow(newPlanId);
+  const promo = await getPromoOrNull(promoCode, userId);
+  const { baseAmount, finalAmount, discountApplied } = getDiscountedAmount(newPlan, promo);
+
   const remainingDays = Math.max(
     0,
     Math.ceil((new Date(currentSubscription.endDate) - new Date()) / DAY_MS)
@@ -349,6 +373,10 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
     activationMode: 'REPLACE_ACTIVE',
     previousSubscriptionId: currentSubscription.id,
     remainingDaysCarried: remainingDays,
+    promoCode: promo?.code || null,
+    promoId: promo?.id || null,
+    baseAmount,
+    discountApplied,
   };
 
   let createdRecords = null;
@@ -357,16 +385,41 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
     createdRecords = await createPendingRecords({
       userId,
       plan: newPlan,
-      amount: Number(newPlan.price),
+      amount: finalAmount,
       metadata,
       endDate,
     });
+
+    // HANDLE FREE UPGRADES: Bypass Razorpay if amount is 0
+    if (finalAmount <= 0) {
+      logger.info(`Processing free upgrade for user ${userId}, plan ${newPlan.id}`);
+      
+      const result = await finalizeCapturedPayment({
+        razorpayOrderId: `free_upgrade_${Date.now()}_${userId}`,
+        razorpayPaymentId: `free_upg_payment_${Date.now()}`,
+        paymentMethod: 'PROMO_CODE',
+        paidAt: new Date(),
+        paymentId: createdRecords.payment.id
+      });
+
+      return {
+        isFree: true,
+        success: true,
+        message: 'Upgrade activated via promo code',
+        subscriptionId: result.subscription.id,
+        finalAmount: 0,
+        discountApplied,
+        remainingDaysCredited: remainingDays,
+        totalDays,
+        newEndDate: endDate.toISOString(),
+      };
+    }
 
     const razorpayOrder = await createGatewayOrder({
       payment: createdRecords.payment,
       subscription: createdRecords.subscription,
       plan: newPlan,
-      amount: Number(newPlan.price),
+      amount: finalAmount,
       notes: {
         type: 'SUBSCRIPTION_UPGRADE',
         userId: String(userId),
@@ -389,6 +442,8 @@ export const createUpgradeOrder = async (userId, newPlanId) => {
       remainingDaysCredited: remainingDays,
       totalDays,
       newEndDate: endDate.toISOString(),
+      finalAmount,
+      discountApplied,
     };
   } catch (error) {
     if (createdRecords) {
