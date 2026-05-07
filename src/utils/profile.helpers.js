@@ -127,15 +127,18 @@ export const updateProfileCompleteness = async (prisma, userId) => {
   // Final score is capped at 100
   const finalScore = Math.min(100, score);
 
+  // Decouple published state from photo presence: any user who completed onboarding (completeness >= 25) is active/published
+  const isPublishable = finalScore >= 25;
+
   await prisma.profile.update({
     where: { userId },
     data: {
       profileCompleteness: finalScore,
       profileCompletionPercentage: finalScore,
-      profileStatus: hasProfilePhoto ? 'ACTIVE' : 'INCOMPLETE',
-      isDraft: !hasProfilePhoto,
-      isPublished: hasProfilePhoto,
-      publishedAt: hasProfilePhoto ? (profile.publishedAt || new Date()) : null,
+      profileStatus: isPublishable ? 'ACTIVE' : 'INCOMPLETE',
+      isDraft: !isPublishable,
+      isPublished: isPublishable,
+      publishedAt: isPublishable ? (profile.publishedAt || new Date()) : null,
     },
   });
 
