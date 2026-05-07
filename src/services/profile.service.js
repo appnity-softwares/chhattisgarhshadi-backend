@@ -559,9 +559,6 @@ export const searchProfiles = async (query, currentUserId = null) => {
       };
       orderBy = [{ viewCount: 'desc' }, { profileCompleteness: 'desc' }, { id: 'desc' }];
     } else if (type === 'new' || type === 'justJoined') {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      where.createdAt = { gte: sevenDaysAgo };
       orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
     } else if (type === 'recommended') {
       orderBy = [{ profileCompleteness: 'desc' }, { viewCount: 'desc' }, { id: 'desc' }];
