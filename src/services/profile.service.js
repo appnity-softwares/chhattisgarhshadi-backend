@@ -8,6 +8,18 @@ import { uploadService } from './upload.service.js';
 import { blockService } from './block.service.js';
 import contactVisibilityService from './contactVisibility.service.js';
 import { cacheHelper } from '../utils/cache.helper.js';
+import matchingAlgorithmService from './matchingAlgorithm.service.js';
+
+const parseReligionsPreference = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return String(value).split(',').map(s => s.trim()).filter(Boolean);
+  }
+};
 
 const profileUserSelect = {
   id: true,
@@ -31,8 +43,16 @@ const profileInclude = {
 
 const profileSearchInclude = {
   user: {
-    select: profileUserSelect,
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
+      profilePicture: true,
+      preferredLanguage: true,
+      lastLoginAt: true,
+    },
   },
+  partnerPreference: true,
   media: {
     where: {
       type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
@@ -476,8 +496,33 @@ export const searchProfiles = async (query, currentUserId = null) => {
     if (drinkingHabit) where.drinkingHabit = drinkingHabit;
     if (typeof isVerified === 'boolean') where.isVerified = isVerified;
 
+    let userReligions = [];
+    let isDefaultMatchFeedQuery = false;
+
+    if (currentUserId && (type === 'featured' || type === 'new' || type === 'justJoined') && (!religions || religions.length === 0)) {
+      isDefaultMatchFeedQuery = true;
+      try {
+        const userProfile = await prisma.profile.findUnique({
+          where: { userId: currentUserId },
+          include: { partnerPreference: true }
+        });
+        if (userProfile) {
+          if (userProfile.partnerPreference?.religion) {
+            userReligions = parseReligionsPreference(userProfile.partnerPreference.religion);
+          }
+          if (userReligions.length === 0 && userProfile.religion) {
+            userReligions = [userProfile.religion];
+          }
+        }
+      } catch (err) {
+        logger.error('Error fetching user religion preference for default match feeds:', err);
+      }
+    }
+
     if (religions?.length) {
       where.religion = { in: religions.map((item) => item.toUpperCase()) };
+    } else if (isDefaultMatchFeedQuery && userReligions.length > 0) {
+      where.religion = { in: userReligions.map(item => item.toUpperCase()) };
     }
 
     if (castes?.length) {
@@ -564,7 +609,7 @@ export const searchProfiles = async (query, currentUserId = null) => {
       orderBy = [{ profileCompleteness: 'desc' }, { viewCount: 'desc' }, { id: 'desc' }];
     }
 
-    const [profiles, totalCount] = await Promise.all([
+    let [profiles, totalCount] = await Promise.all([
       prisma.profile.findMany({
         where,
         skip: cursor,
@@ -592,6 +637,40 @@ export const searchProfiles = async (query, currentUserId = null) => {
       prisma.profile.count({ where }),
     ]);
 
+    // SELF-HEALING FALLBACK: Drop religion filter if 0 default matches exist
+    if (isDefaultMatchFeedQuery && totalCount === 0 && userReligions.length > 0) {
+      logger.info(`No default match feed results found for user ${currentUserId} in religion(s) ${userReligions}. Relaxing religion filter...`);
+      delete where.religion;
+
+      [profiles, totalCount] = await Promise.all([
+        prisma.profile.findMany({
+          where,
+          skip: cursor,
+          take: limit,
+          include: {
+            ...profileSearchInclude,
+            user: {
+              select: {
+                ...profileUserSelect,
+                receivedMatchRequests: currentUserId ? {
+                  where: { senderId: currentUserId },
+                  take: 1,
+                  orderBy: { updatedAt: 'desc' }
+                } : undefined,
+                sentMatchRequests: currentUserId ? {
+                  where: { receiverId: currentUserId },
+                  take: 1,
+                  orderBy: { updatedAt: 'desc' }
+                } : undefined,
+              }
+            }
+          },
+          orderBy,
+        }),
+        prisma.profile.count({ where }),
+      ]);
+    }
+
     let shortlistedIds = new Set();
     if (currentUserId) {
       const shortlists = await prisma.shortlist.findMany({
@@ -604,11 +683,46 @@ export const searchProfiles = async (query, currentUserId = null) => {
       shortlistedIds = new Set(shortlists.map((s) => s.shortlistedUserId));
     }
 
+    let serializedProfiles = profiles.map((p) => serializeProfile(p, shortlistedIds.has(p.userId)));
+
+    // INJECT LIVE COMPATIBILITY SCORES IN REAL-TIME
+    if (currentUserId && currentUserId > 0 && serializedProfiles.length > 0) {
+      try {
+        const userProfile = await prisma.profile.findUnique({
+          where: { userId: currentUserId },
+          include: {
+            partnerPreference: true,
+            user: { select: { id: true, role: true, preferredLanguage: true, lastLoginAt: true, createdAt: true } },
+          },
+        });
+        if (userProfile) {
+          serializedProfiles = await Promise.all(
+            serializedProfiles.map(async (sp) => {
+              // Retrieve the db profile object (with partnerPreference) that was loaded
+              const originalProfileObj = profiles.find(p => p.userId === sp.userId);
+              if (originalProfileObj) {
+                const scoreResult = await matchingAlgorithmService.calculateScoreFromProfiles(userProfile, originalProfileObj);
+                return {
+                  ...sp,
+                  score: scoreResult.percentage ?? 0,
+                  compatibility: scoreResult.compatibility || 'Compatible',
+                  tag: sp.tag || (scoreResult.percentage >= 85 ? 'strong_match' : 'match'),
+                };
+              }
+              return sp;
+            })
+          );
+        }
+      } catch (err) {
+        logger.error('Error injecting compatibility scores in searchProfiles:', err);
+      }
+    }
+
     return {
-      profiles: profiles.map((p) => serializeProfile(p, shortlistedIds.has(p.userId))),
+      profiles: serializedProfiles,
       totalCount,
       nextCursor:
-        cursor + profiles.length < totalCount ? String(cursor + profiles.length) : null,
+        cursor + serializedProfiles.length < totalCount ? String(cursor + serializedProfiles.length) : null,
     };
   } catch (error) {
     logger.error('Error in searchProfiles:', error);
