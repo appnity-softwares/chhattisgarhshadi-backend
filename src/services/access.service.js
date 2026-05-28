@@ -75,17 +75,22 @@ export const getUserAccess = async (userId) => {
         // Rules based on Role Tier
         requiresMatchToChat: !isPremiumTier, // Only Premium tier can chat with anyone
         canInitiateChat: isPremiumTier,      // Only Premium tier can initiate chat
-        canViewContacts: isPremiumTier || isBasicTier,      // Premium has unrestricted contact viewing, Basic has limit
+
+        // CONTACT VIEWING: PREMIUM (₹999) ONLY — Basic (₹299) plan does NOT get contact access.
+        // Basic plan is a "connection" plan (chat + browse), not a full contact-reveal plan.
+        canViewContacts: isPremiumTier,
+
         photoLimit: isPremiumTier ? -1 : 5,  // Basic users see 5, Premium unlimited
         
         // Limits & Features read directly from DB Plan object
         messageLimitPerDay: isPremiumTier ? -1 : (isBasicTier ? 10 : 1),
-        canSeeProfileVisitors: plan.canSeeProfileVisitors || isPremiumTier || isBasicTier || false,
+        canSeeProfileVisitors: plan.canSeeProfileVisitors || isPremiumTier || false,
         priorityListing: plan.priorityListing || false,
         verifiedBadge: plan.verifiedBadge || false,
         
         // Identity
         planName: plan.name,
+        planTier: isPremiumTier ? 'premium' : isBasicTier ? 'basic' : 'free',
         isPremium: isPremiumTier || isBasicTier,
     };
 };

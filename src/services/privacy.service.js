@@ -39,14 +39,21 @@ const parseDataAfterFetch = (settings, arrayFields) => {
 // --- ProfilePrivacy Service ---
 export const getProfilePrivacy = async (userId) => {
   try {
-    let settings = await prisma.profilePrivacySettings.findUnique({
-      where: { userId },
-    });
-    if (!settings) {
+    const [settings, user] = await Promise.all([
+      prisma.profilePrivacySettings.findUnique({ where: { userId } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { showContactInfo: true } })
+    ]);
+
+    let finalSettings = settings;
+    if (!finalSettings) {
       logger.info(`No profile privacy settings found for user ${userId}, creating defaults.`);
-      settings = await prisma.profilePrivacySettings.create({ data: { userId } });
+      finalSettings = await prisma.profilePrivacySettings.create({ data: { userId } });
     }
-    return settings;
+    
+    return {
+      ...finalSettings,
+      showContactInfo: user?.showContactInfo ?? false,
+    };
   } catch (error) {
     logger.error('Error in getProfilePrivacy:', error);
     throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error retrieving privacy settings');
@@ -54,13 +61,34 @@ export const getProfilePrivacy = async (userId) => {
 };
 export const updateProfilePrivacy = async (userId, data) => {
   try {
+    const { showContactInfo, ...profileSettingsData } = data;
+
     const settings = await prisma.profilePrivacySettings.upsert({
       where: { userId },
-      update: data,
-      create: { userId, ...data },
+      update: profileSettingsData,
+      create: { userId, ...profileSettingsData },
     });
+
+    let updatedShowContactInfo = false;
+    if (showContactInfo !== undefined) {
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { showContactInfo }
+      });
+      updatedShowContactInfo = user.showContactInfo;
+    } else {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { showContactInfo: true }
+      });
+      updatedShowContactInfo = user?.showContactInfo ?? false;
+    }
+
     logger.info(`Profile privacy settings updated for user: ${userId}`);
-    return settings;
+    return {
+      ...settings,
+      showContactInfo: updatedShowContactInfo
+    };
   } catch (error) {
     logger.error('Error in updateProfilePrivacy:', error);
     throw new ApiError(HTTP_STATUS.INTERNAL_SERVER_ERROR, 'Error updating privacy settings');

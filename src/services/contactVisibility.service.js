@@ -15,7 +15,7 @@ const getViewerSelect = () => ({
       status: true,
       endDate: true,
       contactViewsUsed: true,
-      plan: true,
+      plan: true, // includes roleToAssign, maxContactViews etc.
     },
     orderBy: { endDate: 'desc' },
   },
@@ -38,6 +38,24 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
   }
 
   try {
+    // ── 1. Check if profile owner has disabled contact sharing ──
+    const ownerPrivacy = await prisma.user.findUnique({
+      where: { id: profileOwnerId },
+      select: {
+        showContactInfo: true,
+        profile: { select: {
+          showPhoneNumber: true,
+          showEmail: true,
+        }}
+      }
+    });
+
+    // If owner explicitly set showContactInfo = false, block everyone (except own profile above)
+    if (ownerPrivacy && ownerPrivacy.showContactInfo === false) {
+      return { canView: false, reason: 'owner_hidden_contact' };
+    }
+
+    // ── 2. Check viewer's subscription / role ──
     const viewer = await prisma.user.findUnique({
       where: { id: viewerId },
       select: getViewerSelect(),
@@ -47,18 +65,20 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
       return { canView: false, reason: 'viewer_not_found' };
     }
 
+    // Admin / lifetime roles always get access
     if (hasUnlimitedPremiumRole(viewer)) {
       return { canView: true, reason: 'premium_access' };
     }
 
-    if (viewer.role === 'PREMIUM_USER' || viewer.role === 'BASIC_USER') {
+    // ONLY PREMIUM tier (₹999) plan can view contacts — Basic (₹299) cannot.
+    // We check the active subscription plan's roleToAssign to determine tier.
+    const activeSub = viewer.subscriptions?.[0];
+    const isPremiumTier = activeSub?.plan?.roleToAssign === 'PREMIUM_USER';
+    if (isPremiumTier) {
       return { canView: true, reason: 'premium_access' };
     }
 
-    if (hasActivePaidSubscription(viewer)) {
-      return { canView: true, reason: 'premium_access' };
-    }
-
+    // Accepted match is a fallback for non-premium users
     const acceptedMatch = await prisma.matchRequest.findFirst({
       where: {
         status: 'ACCEPTED',
@@ -72,6 +92,12 @@ export const canViewContactInfo = async (viewerId, profileOwnerId) => {
 
     if (acceptedMatch) {
       return { canView: true, reason: 'accepted_match' };
+    }
+
+    // Basic plan (₹299) users are blocked — show upgrade prompt
+    const isBasicTier = activeSub?.plan?.roleToAssign === 'BASIC_USER';
+    if (isBasicTier) {
+      return { canView: false, reason: 'basic_plan_no_contact' };
     }
 
     return { canView: false, reason: 'premium_or_match_required' };
@@ -190,7 +216,9 @@ export const getContactInfoIfAllowed = async (viewerId, profileOwnerId) => {
 
 const getVisibilityMessage = (reason) => {
   const messages = {
-    premium_or_match_required: 'Contact details unlock only for premium users or accepted matches.',
+    premium_or_match_required: 'Contact details are available for Premium members (₹999 plan) or accepted matches.',
+    basic_plan_no_contact: 'Your Basic plan (₹299) does not include contact viewing. Upgrade to Premium (₹999) to unlock this feature.',
+    owner_hidden_contact: 'This member has chosen to keep their contact details private.',
     contact_limit_reached: 'Your current subscription has no remaining contact views.',
     viewer_not_found: 'Unable to verify your account.',
     error: 'Unable to check contact visibility right now. Please try again.',
