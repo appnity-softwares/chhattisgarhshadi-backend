@@ -441,6 +441,7 @@ export const searchProfiles = async (query, currentUserId = null) => {
       type,
       search,
       minCompletion,
+      intercasteAllowed, // ← filter: show only profiles open to intercaste marriage
     } = query;
 
     const where = {
@@ -482,7 +483,30 @@ export const searchProfiles = async (query, currentUserId = null) => {
         where.gender = viewerProfile.gender === 'MALE' ? 'FEMALE' : 'MALE';
       }
     }
-    if (maritalStatus) where.maritalStatus = maritalStatus;
+    // PARSE COMMA-SEPARATED STRING PARAMS INTO ARRAYS
+    // The client sends multi-select values as comma-separated strings (e.g. "Hindu,Muslim")
+    // We must split them here before applying filters.
+    const religionsArray = religions
+      ? (Array.isArray(religions) ? religions : String(religions).split(',').map(s => s.trim()).filter(Boolean))
+      : [];
+    const castesArray = castes
+      ? (Array.isArray(castes) ? castes : String(castes).split(',').map(s => s.trim()).filter(Boolean))
+      : [];
+    const maritalStatusArray = maritalStatus
+      ? (Array.isArray(maritalStatus) ? maritalStatus : String(maritalStatus).split(',').map(s => s.trim()).filter(Boolean))
+      : [];
+
+    // TYPE CAST BOOLEAN QUERY PARAMS (query params arrive as strings from HTTP)
+    const isVerifiedBool = isVerified === true || isVerified === 'true';
+    const withPhotoBool = withPhoto === true || withPhoto === 'true';
+    const manglikBool = manglik === true || manglik === 'true' ? true : manglik === false || manglik === 'false' ? false : undefined;
+    const intercasteAllowedBool = intercasteAllowed === true || intercasteAllowed === 'true' ? true : undefined;
+
+    if (maritalStatusArray.length === 1) {
+      where.maritalStatus = maritalStatusArray[0].toUpperCase().replace(/\s+/g, '_');
+    } else if (maritalStatusArray.length > 1) {
+      where.maritalStatus = { in: maritalStatusArray.map(s => s.toUpperCase().replace(/\s+/g, '_')) };
+    }
     if (nativeVillage) where.nativeVillage = { contains: nativeVillage, mode: 'insensitive' };
     if (typeof speaksChhattisgarhi === 'boolean') where.speaksChhattisgarhi = speaksChhattisgarhi;
     if (category) where.category = { equals: category, mode: 'insensitive' };
@@ -490,16 +514,17 @@ export const searchProfiles = async (query, currentUserId = null) => {
     if (state) where.state = { contains: state, mode: 'insensitive' };
     if (occupation) where.occupation = { contains: occupation, mode: 'insensitive' };
     if (motherTongue) where.motherTongue = motherTongue.toUpperCase();
-    if (typeof manglik === 'boolean') where.manglik = manglik;
+    if (manglikBool !== undefined) where.manglik = manglikBool;
     if (diet) where.diet = diet;
     if (smokingHabit) where.smokingHabit = smokingHabit;
     if (drinkingHabit) where.drinkingHabit = drinkingHabit;
-    if (typeof isVerified === 'boolean') where.isVerified = isVerified;
+    if (isVerifiedBool) where.isVerified = true;
+    if (intercasteAllowedBool !== undefined) where.intercasteAllowed = intercasteAllowedBool;
 
     let userReligions = [];
     let isDefaultMatchFeedQuery = false;
 
-    if (currentUserId && (type === 'featured' || type === 'new' || type === 'justJoined') && (!religions || religions.length === 0)) {
+    if (currentUserId && (type === 'featured' || type === 'new' || type === 'justJoined') && !religionsArray.length) {
       isDefaultMatchFeedQuery = true;
       try {
         const userProfile = await prisma.profile.findUnique({
@@ -519,14 +544,14 @@ export const searchProfiles = async (query, currentUserId = null) => {
       }
     }
 
-    if (religions?.length) {
-      where.religion = { in: religions.map((item) => item.toUpperCase()) };
+    if (religionsArray.length) {
+      where.religion = { in: religionsArray.map((item) => item.toUpperCase()) };
     } else if (isDefaultMatchFeedQuery && userReligions.length > 0) {
       where.religion = { in: userReligions.map(item => item.toUpperCase()) };
     }
 
-    if (castes?.length) {
-      where.caste = { in: castes };
+    if (castesArray.length) {
+      where.caste = { in: castesArray };
     }
 
     if (minHeight) where.height = { ...where.height, gte: Number(minHeight) };
@@ -567,7 +592,7 @@ export const searchProfiles = async (query, currentUserId = null) => {
       where.annualIncome = { contains: incomeValue.replace('+', ''), mode: 'insensitive' };
     }
 
-    if (withPhoto) {
+    if (withPhotoBool) {
       where.media = {
         some: {
           type: { in: ['PROFILE_PHOTO', 'GALLERY_PHOTO'] },
@@ -594,6 +619,14 @@ export const searchProfiles = async (query, currentUserId = null) => {
 
     let orderBy = [{ profileCompleteness: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
 
+    // NEW USER BOOST: profiles created within this window are considered "new"
+    const NEW_USER_WINDOW_DAYS = 14;
+    const newUserCutoff = new Date();
+    newUserCutoff.setDate(newUserCutoff.getDate() - NEW_USER_WINDOW_DAYS);
+
+    // Will hold new-user profiles injected at the top of featured feed
+    let newUserProfiles = [];
+
     if (type === 'featured') {
       where.media = {
         some: {
@@ -603,6 +636,50 @@ export const searchProfiles = async (query, currentUserId = null) => {
         },
       };
       orderBy = [{ viewCount: 'desc' }, { profileCompleteness: 'desc' }, { id: 'desc' }];
+
+      // === NEW USER BOOST ===
+      // Fetch recently joined profiles with photos to pin at top of featured feed.
+      // Only on first page (cursor === 0) to avoid duplicates on pagination.
+      if (cursor === 0) {
+        try {
+          const newWhere = {
+            ...where,
+            createdAt: { gte: newUserCutoff },
+            profileCompleteness: { gte: 40 }, // must have reasonable completeness
+          };
+
+          newUserProfiles = await prisma.profile.findMany({
+            where: newWhere,
+            take: Math.min(5, limit), // inject up to 5 new users at top
+            include: {
+              ...profileSearchInclude,
+              user: {
+                select: {
+                  ...profileUserSelect,
+                  receivedMatchRequests: currentUserId ? {
+                    where: { senderId: currentUserId },
+                    take: 1,
+                    orderBy: { updatedAt: 'desc' }
+                  } : undefined,
+                  sentMatchRequests: currentUserId ? {
+                    where: { receiverId: currentUserId },
+                    take: 1,
+                    orderBy: { updatedAt: 'desc' }
+                  } : undefined,
+                }
+              }
+            },
+            orderBy: [{ createdAt: 'desc' }, { profileCompleteness: 'desc' }],
+          });
+
+          if (newUserProfiles.length > 0) {
+            logger.info(`🆕 New user boost: injecting ${newUserProfiles.length} new profile(s) at top of featured feed for user ${currentUserId}`);
+          }
+        } catch (err) {
+          logger.error('Error fetching new user boost profiles:', err);
+          newUserProfiles = []; // graceful fallback — don't break the main query
+        }
+      }
     } else if (type === 'new' || type === 'justJoined') {
       orderBy = [{ createdAt: 'desc' }, { id: 'desc' }];
     } else if (type === 'recommended') {
@@ -683,7 +760,34 @@ export const searchProfiles = async (query, currentUserId = null) => {
       shortlistedIds = new Set(shortlists.map((s) => s.shortlistedUserId));
     }
 
-    let serializedProfiles = profiles.map((p) => serializeProfile(p, shortlistedIds.has(p.userId)));
+    // TAG ALL PROFILES NEWER THAN THE WINDOW AS 'new_user'
+    // This powers the "New Profiles" section in the HomeScreen sectioned view
+    let serializedProfiles = profiles.map((p) => {
+      const serialized = serializeProfile(p, shortlistedIds.has(p.userId));
+      const isNewUser = p.createdAt && new Date(p.createdAt) >= newUserCutoff;
+      if (isNewUser && !serialized.tag) {
+        serialized.tag = 'new_user';
+      }
+      return serialized;
+    });
+
+    // MERGE NEW USER BOOST PROFILES (featured tab only, first page)
+    if (newUserProfiles.length > 0) {
+      const newUserIds = new Set(newUserProfiles.map(p => p.userId));
+
+      // Serialize new user profiles with 'new_user' tag
+      const serializedNewUsers = newUserProfiles.map(p => ({
+        ...serializeProfile(p, shortlistedIds.has(p.userId)),
+        tag: 'new_user',
+        isNewUserBoost: true, // client can use this for special badge rendering
+      }));
+
+      // Remove new user profiles from the main list to avoid duplicates
+      serializedProfiles = serializedProfiles.filter(p => !newUserIds.has(p.userId));
+
+      // Inject new users at the top, trim to stay within limit
+      serializedProfiles = [...serializedNewUsers, ...serializedProfiles].slice(0, limit);
+    }
 
     // INJECT LIVE COMPATIBILITY SCORES IN REAL-TIME
     if (currentUserId && currentUserId > 0 && serializedProfiles.length > 0) {
@@ -696,17 +800,19 @@ export const searchProfiles = async (query, currentUserId = null) => {
           },
         });
         if (userProfile) {
+          // Keep the all profiles list in sync for score lookup
+          const allFetchedProfiles = [...newUserProfiles, ...profiles];
           serializedProfiles = await Promise.all(
             serializedProfiles.map(async (sp) => {
-              // Retrieve the db profile object (with partnerPreference) that was loaded
-              const originalProfileObj = profiles.find(p => p.userId === sp.userId);
+              const originalProfileObj = allFetchedProfiles.find(p => p.userId === sp.userId);
               if (originalProfileObj) {
                 const scoreResult = await matchingAlgorithmService.calculateScoreFromProfiles(userProfile, originalProfileObj);
                 return {
                   ...sp,
                   score: scoreResult.percentage ?? 0,
                   compatibility: scoreResult.compatibility || 'Compatible',
-                  tag: sp.tag || (scoreResult.percentage >= 85 ? 'strong_match' : 'match'),
+                  // Preserve 'new_user' tag — don't overwrite with match tag
+                  tag: sp.tag === 'new_user' ? 'new_user' : (scoreResult.percentage >= 85 ? 'strong_match' : 'match'),
                 };
               }
               return sp;
