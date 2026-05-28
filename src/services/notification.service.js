@@ -74,27 +74,17 @@ const _sendMulticastNotification = async (fcmTokens, payload) => {
     batches.push(fcmTokens.slice(i, i + BATCH_SIZE));
   }
 
-  const getAndroidChannel = (type) => {
-    switch (type) {
-      case NOTIFICATION_TYPES.NEW_MESSAGE:
-        return 'messages_channel';
-      case NOTIFICATION_TYPES.MATCH_REQUEST:
-      case NOTIFICATION_TYPES.MATCH_ACCEPTED:
-        return 'matches_channel';
-      case NOTIFICATION_TYPES.PROFILE_VIEWED:
-        return 'profile_views_channel';
-      default:
-        return 'general_channel';
-    }
-  };
+  // Note: Channel selection is now handled natively in MyFirebaseMessagingService.kt
+  // This helper is kept for reference but no longer needed in the FCM payload
+  // since we send data-only messages.
 
   for (const tokenBatch of batches) {
+    // DATA-ONLY payload: Do NOT include 'notification' key.
+    // When 'notification' is present, FCM auto-displays it in background/killed state
+    // and bypasses onMessageReceived entirely — our custom MyFirebaseMessagingService
+    // never gets called, so channels, styles, and sounds are ignored.
+    // With data-only, onMessageReceived always fires in ALL app states.
     const message = {
-      notification: {
-        title: payload.title,
-        body: payload.body,
-        image: payload.imageUrl || payload.image,
-      },
       data: {
         ...payload.data,
         title: String(payload.title || ''),
@@ -105,18 +95,16 @@ const _sendMulticastNotification = async (fcmTokens, payload) => {
       },
       android: {
         priority: 'high',
-        notification: {
-          channelId: getAndroidChannel(payload.notificationType),
-          sound: 'default',
-          priority: 'high',
-        },
+        // No android.notification block needed — our service builds the notification
       },
       apns: {
         payload: {
           aps: {
+            // content-available: 1 wakes the app in background on iOS
+            // alert, badge, and sound are handled by the JS FCM handler on iOS
+            'content-available': 1,
             sound: 'default',
             badge: payload.data?.badgeCount || 1,
-            'content-available': 1,
           },
         },
         headers: {
